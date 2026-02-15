@@ -10,6 +10,7 @@ import chromadb
 from chromadb.utils.embedding_functions import OpenAIEmbeddingFunction
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from openai import OpenAI
 from pydantic import BaseModel, Field
 
 CHROMA_DIR = Path(__file__).resolve().parent.parent / "chroma_db"
@@ -33,6 +34,8 @@ embedding_fn = OpenAIEmbeddingFunction(
     api_key=api_key,
     model_name="text-embedding-3-small",
 )
+
+openai_client = OpenAI(api_key=api_key)
 
 chroma_client = chromadb.PersistentClient(path=str(CHROMA_DIR))
 collection = chroma_client.get_or_create_collection(
@@ -84,3 +87,59 @@ def retrieve(req: RetrieveRequest):
         ))
 
     return RetrieveResponse(results=chunks)
+
+
+SYSTEM_PROMPT = """You are an internal documentation assistant. Answer the user's question using ONLY the provided context below. Do not use any prior knowledge.
+
+If the context does not contain enough information to answer the question, respond with: "I don't know based on the available documentation."
+
+Be concise and direct. Cite the source document when possible.
+
+Context:
+{context}"""
+
+
+class QueryRequest(BaseModel):
+    query: str
+    top_k: int = Field(default=5, ge=1, le=20)
+
+
+class QueryResponse(BaseModel):
+    answer: str
+    sources: list[str]
+
+
+@app.post("/query", response_model=QueryResponse)
+def query(req: QueryRequest):
+    if collection.count() == 0:
+        raise HTTPException(status_code=404, detail="No documents ingested yet. Run: python -m app.ingest")
+
+    results = collection.query(
+        query_texts=[req.query],
+        n_results=min(req.top_k, collection.count()),
+    )
+
+    # Build context from retrieved chunks
+    context_parts = []
+    sources = []
+    for doc_id, text in zip(results["ids"][0], results["documents"][0]):
+        source = doc_id.split("::")[0]
+        context_parts.append(f"[Source: {source}]\n{text}")
+        if source not in sources:
+            sources.append(source)
+
+    context = "\n\n---\n\n".join(context_parts)
+
+    completion = openai_client.chat.completions.create(
+        model="gpt-4o-mini",
+        temperature=0.1,
+        messages=[
+            {"role": "system", "content": SYSTEM_PROMPT.format(context=context)},
+            {"role": "user", "content": req.query},
+        ],
+    )
+
+    return QueryResponse(
+        answer=completion.choices[0].message.content,
+        sources=sources,
+    )
