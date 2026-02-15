@@ -99,7 +99,14 @@ function App() {
               <ul className="border-t border-gray-100 divide-y divide-gray-100">
                 {sources.map((src, i) => (
                   <li key={i} className="px-4 py-3 text-sm">
-                    {src}
+                    <a
+                      href={`http://localhost:8000/source-docs/${src}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-blue-600 hover:underline"
+                    >
+                      {src}
+                    </a>
                   </li>
                 ))}
               </ul>

@@ -10,10 +10,12 @@ import chromadb
 from chromadb.utils.embedding_functions import OpenAIEmbeddingFunction
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from openai import OpenAI
 from pydantic import BaseModel, Field
 
 CHROMA_DIR = Path(__file__).resolve().parent.parent / "chroma_db"
+DOCS_DIR = Path(__file__).resolve().parent.parent / "docs"
 COLLECTION_NAME = "internal_docs"
 
 app = FastAPI()
@@ -143,3 +145,6 @@ def query(req: QueryRequest):
         answer=completion.choices[0].message.content,
         sources=sources,
     )
+
+
+app.mount("/source-docs", StaticFiles(directory=str(DOCS_DIR)), name="source_docs")
