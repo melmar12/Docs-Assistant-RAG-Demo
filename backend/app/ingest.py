@@ -4,13 +4,21 @@ import os
 import sys
 from pathlib import Path
 
-from dotenv import load_dotenv
+try:
+    from dotenv import load_dotenv
+except ImportError:
+    print("Error: python-dotenv is not installed. Install it with: pip install python-dotenv")
+    sys.exit(1)
 
 ENV_FILE = Path(__file__).resolve().parent.parent / ".env"
 load_dotenv(ENV_FILE)
 
-import chromadb
-from chromadb.utils.embedding_functions import OpenAIEmbeddingFunction
+try:
+    import chromadb
+    from chromadb.utils.embedding_functions import OpenAIEmbeddingFunction
+except ImportError:
+    print("Error: chromadb is not installed. Install it with: pip install chromadb")
+    sys.exit(1)
 
 DOCS_DIR = Path(__file__).resolve().parent.parent / "docs"
 CHROMA_DIR = Path(__file__).resolve().parent.parent / "chroma_db"
@@ -44,8 +52,8 @@ def chunk_text(text: str, chunk_size: int = CHUNK_SIZE, overlap: int = CHUNK_OVE
 
         # Try to break at a paragraph boundary (double newline)
         if end < len(text):
-            boundary = text.rfind("\n\n", start, end)
-            if boundary > start:
+            boundary = text.rfind("\n\n", start + overlap, end)
+            if boundary != -1:
                 end = boundary + 2  # include the double newline
 
         chunks.append(text[start:end].strip())
