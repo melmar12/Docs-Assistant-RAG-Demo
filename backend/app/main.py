@@ -159,4 +159,47 @@ def query(req: QueryRequest):
     )
 
 
+class DebugChunk(BaseModel):
+    doc_id: str
+    section: str
+    chunk_index: int
+    score: float
+    preview: str
+
+
+class DebugQueryResponse(BaseModel):
+    query: str
+    results: list[DebugChunk]
+
+
+@app.post("/debug-query", response_model=DebugQueryResponse)
+def debug_query(req: RetrieveRequest):
+    """Return retrieval diagnostics: doc_id, section, chunk_id, score, first 200 chars."""
+    if collection.count() == 0:
+        raise HTTPException(status_code=404, detail="No documents ingested yet. Run: python -m app.ingest")
+
+    results = collection.query(
+        query_texts=[req.query],
+        n_results=min(req.top_k, collection.count()),
+        include=["documents", "distances", "metadatas"],
+    )
+
+    debug_results = []
+    for doc_id, distance, text, meta in zip(
+        results["ids"][0],
+        results["distances"][0],
+        results["documents"][0],
+        results["metadatas"][0],
+    ):
+        debug_results.append(DebugChunk(
+            doc_id=doc_id,
+            section=meta.get("section", ""),
+            chunk_index=meta.get("chunk_index", -1),
+            score=round(1 - distance, 4),
+            preview=text[:200],
+        ))
+
+    return DebugQueryResponse(query=req.query, results=debug_results)
+
+
 app.mount("/source-docs", StaticFiles(directory=str(DOCS_DIR)), name="source_docs")

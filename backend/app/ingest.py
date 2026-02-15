@@ -1,6 +1,7 @@
 """Ingestion script: loads markdown files, chunks them, embeds via OpenAI, stores in ChromaDB."""
 
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -23,8 +24,7 @@ except ImportError:
 DOCS_DIR = Path(__file__).resolve().parent.parent / "docs"
 CHROMA_DIR = Path(__file__).resolve().parent.parent / "chroma_db"
 COLLECTION_NAME = "internal_docs"
-CHUNK_SIZE = 500
-CHUNK_OVERLAP = 50
+MAX_CHUNK_CHARS = 1500
 
 
 def load_markdown_files(docs_dir: Path) -> list[dict]:
@@ -40,27 +40,111 @@ def load_markdown_files(docs_dir: Path) -> list[dict]:
     return documents
 
 
-def chunk_text(text: str, chunk_size: int = CHUNK_SIZE, overlap: int = CHUNK_OVERLAP) -> list[str]:
-    """Split text into overlapping chunks by character count, breaking at paragraph boundaries."""
-    if len(text) <= chunk_size:
-        return [text]
+def _split_by_headings(text: str) -> list[tuple[str, str]]:
+    """Split markdown into (heading, body) pairs on ``## `` boundaries.
 
-    chunks = []
-    start = 0
-    while start < len(text):
-        end = start + chunk_size
+    Returns a list of tuples.  The first entry may have heading="" for any
+    content before the first ``## `` heading (e.g. front-matter or the
+    ``# Title`` line).
+    """
+    pattern = re.compile(r"^(## .+)$", re.MULTILINE)
+    parts = pattern.split(text)
 
-        # Try to break at a paragraph boundary (double newline)
-        if end < len(text):
-            boundary = text.rfind("\n\n", start + overlap, end)
-            if boundary != -1:
-                end = boundary + 2  # include the double newline
+    sections: list[tuple[str, str]] = []
+    # parts alternates: [pre-text, heading1, body1, heading2, body2, ...]
+    # First element is everything before the first ## heading
+    preamble = parts[0].strip()
+    if preamble:
+        sections.append(("", preamble))
 
-        chunks.append(text[start:end].strip())
-        start = end - overlap
+    for i in range(1, len(parts), 2):
+        heading = parts[i].strip()
+        body = parts[i + 1].strip() if i + 1 < len(parts) else ""
+        sections.append((heading, body))
 
-    # Drop any empty trailing chunks
-    return [c for c in chunks if c]
+    return sections
+
+
+def _extract_title(text: str) -> str:
+    """Return the first ``# Title`` line (not ##) or empty string."""
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("# ") and not stripped.startswith("## "):
+            return stripped
+    return ""
+
+
+def _split_section_by_paragraphs(
+    section_text: str, title: str, heading: str, max_chars: int
+) -> list[str]:
+    """Split an oversized section into sub-chunks at paragraph boundaries.
+
+    Each sub-chunk is prefixed with the title and heading so the LLM always
+    has context about which section the content belongs to.
+    """
+    prefix = ""
+    if title:
+        prefix += title + "\n\n"
+    if heading:
+        prefix += heading + "\n\n"
+
+    paragraphs = re.split(r"\n{2,}", section_text)
+    chunks: list[str] = []
+    current = prefix
+
+    for para in paragraphs:
+        para = para.strip()
+        if not para:
+            continue
+        candidate = current + para + "\n\n" if current != prefix else prefix + para + "\n\n"
+        if current == prefix:
+            # First paragraph — always add it
+            current = prefix + para + "\n\n"
+        elif len(current + para + "\n\n") <= max_chars:
+            current += para + "\n\n"
+        else:
+            chunks.append(current.strip())
+            current = prefix + para + "\n\n"
+
+    if current.strip() and current.strip() != prefix.strip():
+        chunks.append(current.strip())
+
+    return chunks if chunks else [section_text.strip()]
+
+
+def chunk_markdown(text: str, max_chars: int = MAX_CHUNK_CHARS) -> list[dict]:
+    """Split a markdown document into heading-aware chunks.
+
+    Returns a list of dicts with keys: ``text``, ``section``.
+    """
+    title = _extract_title(text)
+    sections = _split_by_headings(text)
+
+    chunks: list[dict] = []
+
+    for heading, body in sections:
+        section_name = heading.lstrip("# ").strip() if heading else "(intro)"
+
+        # Assemble full chunk text: title + heading + body
+        parts = []
+        if title and heading:
+            # Include doc title for context in every non-preamble chunk
+            parts.append(title)
+        if heading:
+            parts.append(heading)
+        if body:
+            parts.append(body)
+        full_text = "\n\n".join(parts)
+
+        if len(full_text) <= max_chars:
+            chunks.append({"text": full_text, "section": section_name})
+        else:
+            # Section too large — sub-chunk by paragraph
+            sub_chunks = _split_section_by_paragraphs(body, title, heading, max_chars)
+            for sub_text in sub_chunks:
+                chunks.append({"text": sub_text, "section": section_name})
+
+    return chunks
 
 
 def ingest():
@@ -82,15 +166,16 @@ def ingest():
     all_metadatas: list[dict] = []
 
     for doc in documents:
-        chunks = chunk_text(doc["content"])
+        chunks = chunk_markdown(doc["content"])
         print(f"  {doc['relative_path']}: {len(chunks)} chunk(s)")
         for i, chunk in enumerate(chunks):
             all_ids.append(f"{doc['relative_path']}::chunk{i}")
-            all_chunks.append(chunk)
+            all_chunks.append(chunk["text"])
             all_metadatas.append({
                 "source": doc["relative_path"],
                 "filename": doc["filename"],
                 "chunk_index": i,
+                "section": chunk["section"],
             })
 
     print(f"Total chunks: {len(all_chunks)}")
