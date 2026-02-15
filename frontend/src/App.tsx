@@ -1,8 +1,15 @@
 import { useState } from "react";
 
+interface ChunkResult {
+  doc_id: string;
+  score: number;
+  text: string;
+}
+
 interface QueryResponse {
   answer: string;
   sources: string[];
+  chunks: ChunkResult[];
 }
 
 function App() {
@@ -12,6 +19,8 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sourcesOpen, setSourcesOpen] = useState(false);
+  const [chunks, setChunks] = useState<ChunkResult[]>([]);
+  const [chunksOpen, setChunksOpen] = useState(false);
 
   async function handleAsk() {
     if (!query.trim()) return;
@@ -21,6 +30,8 @@ function App() {
     setAnswer(null);
     setSources([]);
     setSourcesOpen(false);
+    setChunks([]);
+    setChunksOpen(false);
 
     try {
       const res = await fetch("http://localhost:8000/query", {
@@ -34,6 +45,7 @@ function App() {
       const data: QueryResponse = await res.json();
       setAnswer(data.answer);
       setSources(data.sources);
+      setChunks(data.chunks);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Something went wrong");
     } finally {
@@ -107,6 +119,36 @@ function App() {
                     >
                       {src}
                     </a>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+
+        {chunks.length > 0 && (
+          <div className="bg-white border border-gray-200 rounded-lg">
+            <button
+              onClick={() => setChunksOpen(!chunksOpen)}
+              className="w-full flex items-center justify-between p-4 text-sm font-semibold text-gray-500 uppercase tracking-wide"
+            >
+              <span>Retrieved Chunks ({chunks.length})</span>
+              <span>{chunksOpen ? "−" : "+"}</span>
+            </button>
+
+            {chunksOpen && (
+              <ul className="border-t border-gray-100 divide-y divide-gray-100">
+                {chunks.map((chunk, i) => (
+                  <li key={i} className="px-4 py-3 space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-gray-700">{chunk.doc_id}</span>
+                      <span className="text-xs font-mono bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded">
+                        {chunk.score.toFixed(4)}
+                      </span>
+                    </div>
+                    <pre className="text-xs text-gray-600 bg-gray-50 rounded p-2 max-h-40 overflow-auto whitespace-pre-wrap">
+                      {chunk.text}
+                    </pre>
                   </li>
                 ))}
               </ul>

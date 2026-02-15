@@ -109,6 +109,7 @@ class QueryRequest(BaseModel):
 class QueryResponse(BaseModel):
     answer: str
     sources: list[str]
+    chunks: list[ChunkResult]
 
 
 @app.post("/query", response_model=QueryResponse)
@@ -121,14 +122,24 @@ def query(req: QueryRequest):
         n_results=min(req.top_k, collection.count()),
     )
 
-    # Build context from retrieved chunks
+    # Build context and chunk results from retrieved chunks
     context_parts = []
     sources = []
-    for doc_id, text in zip(results["ids"][0], results["documents"][0]):
+    chunks = []
+    for doc_id, distance, text in zip(
+        results["ids"][0],
+        results["distances"][0],
+        results["documents"][0],
+    ):
         source = doc_id.split("::")[0]
         context_parts.append(f"[Source: {source}]\n{text}")
         if source not in sources:
             sources.append(source)
+        chunks.append(ChunkResult(
+            doc_id=doc_id,
+            score=round(1 - distance, 4),
+            text=text,
+        ))
 
     context = "\n\n---\n\n".join(context_parts)
 
@@ -144,6 +155,7 @@ def query(req: QueryRequest):
     return QueryResponse(
         answer=completion.choices[0].message.content,
         sources=sources,
+        chunks=chunks,
     )
 
 
