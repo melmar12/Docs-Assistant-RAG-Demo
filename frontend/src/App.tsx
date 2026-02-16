@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import ReactMarkdown from "react-markdown";
 
 interface ChunkResult {
@@ -13,15 +13,39 @@ interface QueryResponse {
   chunks: ChunkResult[];
 }
 
+const SESSION_KEY = "docs-assistant-state";
+
+interface PersistedState {
+  query: string;
+  answer: string | null;
+  sources: string[];
+  chunks: ChunkResult[];
+}
+
+function loadSession(): PersistedState | null {
+  try {
+    const raw = sessionStorage.getItem(SESSION_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
 function App() {
-  const [query, setQuery] = useState("");
-  const [answer, setAnswer] = useState<string | null>(null);
-  const [sources, setSources] = useState<string[]>([]);
+  const saved = loadSession();
+  const [query, setQuery] = useState(saved?.query ?? "");
+  const [answer, setAnswer] = useState<string | null>(saved?.answer ?? null);
+  const [sources, setSources] = useState<string[]>(saved?.sources ?? []);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sourcesOpen, setSourcesOpen] = useState(false);
-  const [chunks, setChunks] = useState<ChunkResult[]>([]);
+  const [chunks, setChunks] = useState<ChunkResult[]>(saved?.chunks ?? []);
   const [chunksOpen, setChunksOpen] = useState(false);
+
+  useEffect(() => {
+    const state: PersistedState = { query, answer, sources, chunks };
+    sessionStorage.setItem(SESSION_KEY, JSON.stringify(state));
+  }, [query, answer, sources, chunks]);
 
   async function handleAsk() {
     if (!query.trim()) return;
