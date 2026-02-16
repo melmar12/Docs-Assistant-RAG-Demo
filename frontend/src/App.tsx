@@ -13,7 +13,7 @@ interface QueryResponse {
   chunks: ChunkResult[];
 }
 
-const SESSION_KEY = "docs-assistant-state";
+const STORAGE_KEY = "docs-assistant-state";
 
 interface PersistedState {
   query: string;
@@ -22,9 +22,9 @@ interface PersistedState {
   chunks: ChunkResult[];
 }
 
-function loadSession(): PersistedState | null {
+function loadPersistedState(): PersistedState | null {
   try {
-    const raw = sessionStorage.getItem(SESSION_KEY);
+    const raw = localStorage.getItem(STORAGE_KEY);
     return raw ? JSON.parse(raw) : null;
   } catch {
     return null;
@@ -32,7 +32,7 @@ function loadSession(): PersistedState | null {
 }
 
 function App() {
-  const saved = loadSession();
+  const saved = loadPersistedState();
   const [query, setQuery] = useState(saved?.query ?? "");
   const [answer, setAnswer] = useState<string | null>(saved?.answer ?? null);
   const [sources, setSources] = useState<string[]>(saved?.sources ?? []);
@@ -44,7 +44,7 @@ function App() {
 
   useEffect(() => {
     const state: PersistedState = { query, answer, sources, chunks };
-    sessionStorage.setItem(SESSION_KEY, JSON.stringify(state));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   }, [query, answer, sources, chunks]);
 
   async function handleAsk() {
@@ -84,8 +84,6 @@ function App() {
         <h1 className="text-xl font-semibold">Docs Assistant</h1>
         <a
           href="http://localhost:8000/source-docs"
-          target="_blank"
-          rel="noopener noreferrer"
           className="text-sm text-blue-600 hover:underline"
         >
           Browse Docs
@@ -152,8 +150,6 @@ function App() {
                   <li key={i} className="px-4 py-3 text-sm">
                     <a
                       href={`http://localhost:8000/source-docs/${src}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
                       className="text-blue-600 hover:underline"
                     >
                       {src}
