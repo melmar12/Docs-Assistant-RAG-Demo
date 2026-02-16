@@ -16,7 +16,7 @@ interface QueryResponse {
 const STORAGE_KEY = "docs-assistant-state";
 
 interface PersistedState {
-  query: string;
+  submittedQuery: string | null;
   answer: string | null;
   sources: string[];
   chunks: ChunkResult[];
@@ -33,7 +33,8 @@ function loadPersistedState(): PersistedState | null {
 
 function App() {
   const saved = loadPersistedState();
-  const [query, setQuery] = useState(saved?.query ?? "");
+  const [query, setQuery] = useState("");
+  const [submittedQuery, setSubmittedQuery] = useState<string | null>(saved?.submittedQuery ?? null);
   const [answer, setAnswer] = useState<string | null>(saved?.answer ?? null);
   const [sources, setSources] = useState<string[]>(saved?.sources ?? []);
   const [loading, setLoading] = useState(false);
@@ -43,15 +44,18 @@ function App() {
   const [chunksOpen, setChunksOpen] = useState(false);
 
   useEffect(() => {
-    const state: PersistedState = { query, answer, sources, chunks };
+    const state: PersistedState = { submittedQuery, answer, sources, chunks };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  }, [query, answer, sources, chunks]);
+  }, [submittedQuery, answer, sources, chunks]);
 
   async function handleAsk() {
     if (!query.trim()) return;
 
+    const currentQuery = query.trim();
+    setQuery("");
     setLoading(true);
     setError(null);
+    setSubmittedQuery(null);
     setAnswer(null);
     setSources([]);
     setSourcesOpen(false);
@@ -62,16 +66,18 @@ function App() {
       const res = await fetch("http://localhost:8000/query", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query, top_k: 5 }),
+        body: JSON.stringify({ query: currentQuery, top_k: 5 }),
       });
 
       if (!res.ok) throw new Error(`Request failed (${res.status})`);
 
       const data: QueryResponse = await res.json();
+      setSubmittedQuery(currentQuery);
       setAnswer(data.answer);
       setSources(data.sources);
       setChunks(data.chunks);
     } catch (e) {
+      setSubmittedQuery(currentQuery);
       setError(e instanceof Error ? e.message : "Something went wrong");
     } finally {
       setLoading(false);
@@ -110,6 +116,15 @@ function App() {
             {loading ? "Asking..." : "Ask"}
           </button>
         </div>
+
+        {submittedQuery && (
+          <div className="bg-white border border-gray-200 rounded-lg p-4">
+            <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-1">
+              Question
+            </h2>
+            <p className="text-sm text-gray-900">{submittedQuery}</p>
+          </div>
+        )}
 
         {error && (
           <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg p-4 text-sm">
