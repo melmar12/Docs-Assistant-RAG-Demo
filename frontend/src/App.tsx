@@ -23,8 +23,13 @@ interface PersistedState {
 }
 
 function loadPersistedState(): PersistedState | null {
+  const navEntry = performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming;
+  if (navEntry?.type === "reload") {
+    sessionStorage.removeItem(STORAGE_KEY);
+    return null;
+  }
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = sessionStorage.getItem(STORAGE_KEY);
     return raw ? JSON.parse(raw) : null;
   } catch {
     return null;
@@ -45,7 +50,7 @@ function App() {
 
   useEffect(() => {
     const state: PersistedState = { submittedQuery, answer, sources, chunks };
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   }, [submittedQuery, answer, sources, chunks]);
 
   async function handleAsk() {
