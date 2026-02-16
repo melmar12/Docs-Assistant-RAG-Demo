@@ -220,10 +220,23 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   ul, ol {{ padding-left: 1.5em; }}
   li {{ margin: 0.25em 0; }}
   a {{ color: #2563eb; }}
+  nav {{ margin-bottom: 1.5em; font-size: 0.875rem; }}
 </style>
 </head>
-<body>{body}</body>
+<body><nav><a href="http://localhost:5173">&larr; Back to Docs Assistant</a></nav>{body}</body>
 </html>"""
+
+
+@app.get("/source-docs")
+def source_docs_index():
+    """List all available documentation files."""
+    files = sorted(DOCS_DIR.glob("*.md"))
+    items = []
+    for f in files:
+        title = f.stem.replace("-", " ").replace("_", " ").title()
+        items.append(f'<li><a href="/source-docs/{f.name}">{title}</a></li>')
+    body = "<h1>Documentation</h1>\n<ul>\n" + "\n".join(items) + "\n</ul>"
+    return HTMLResponse(HTML_TEMPLATE.format(title="Documentation", body=body))
 
 
 @app.get("/source-docs/{filename}")
@@ -236,6 +249,7 @@ def source_doc(filename: str):
         raise HTTPException(status_code=404, detail="Not found")
 
     md_text = path.read_text(encoding="utf-8")
-    body = markdown.markdown(md_text, extensions=["fenced_code", "tables"])
+    html_body = markdown.markdown(md_text, extensions=["fenced_code", "tables"])
     title = filename.removesuffix(".md").replace("-", " ").title()
+    body = '<a href="/source-docs" style="font-size:0.875rem">All Docs</a>\n' + html_body
     return HTMLResponse(HTML_TEMPLATE.format(title=title, body=body))

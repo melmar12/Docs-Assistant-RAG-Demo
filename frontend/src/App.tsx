@@ -56,8 +56,16 @@ function App() {
 
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900">
-      <header className="bg-white border-b border-gray-200 px-6 py-4">
+      <header className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
         <h1 className="text-xl font-semibold">Docs Assistant</h1>
+        <a
+          href="http://localhost:8000/source-docs"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-sm text-blue-600 hover:underline"
+        >
+          Browse Docs
+        </a>
       </header>
 
       <main className="max-w-3xl mx-auto px-4 py-8 space-y-6">
