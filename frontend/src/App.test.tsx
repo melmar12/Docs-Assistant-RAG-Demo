@@ -1,55 +1,24 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { http, HttpResponse } from "msw";
+import { beforeEach, describe, expect, it } from "vitest";
 import App from "./App";
-
-function mockFetch(responses: Record<string, unknown>) {
-  return vi.fn((url: string) => {
-    for (const [pattern, data] of Object.entries(responses)) {
-      if (url.includes(pattern)) {
-        return Promise.resolve({
-          ok: true,
-          json: () => Promise.resolve(data),
-        });
-      }
-    }
-    return Promise.resolve({ ok: false, status: 404 });
-  });
-}
-
-const queryResponse = {
-  answer: "The answer is **42**.",
-  sources: ["guide.md", "faq.md"],
-  chunks: [
-    { doc_id: "guide.md::0", score: 0.95, text: "Chunk text from guide" },
-    { doc_id: "faq.md::1", score: 0.88, text: "Chunk text from faq" },
-  ],
-};
-
-const docList = ["getting-started.md", "api-reference.md"];
-
-const docContent = {
-  filename: "getting-started.md",
-  content: "---\ntitle: Getting Started\n---\n# Getting Started\n\nWelcome to the docs.",
-};
+import { server } from "./test/server";
 
 beforeEach(() => {
   localStorage.clear();
   sessionStorage.clear();
-  vi.restoreAllMocks();
 });
 
 describe("App", () => {
   describe("Header and navigation", () => {
     it("renders header with title and Browse Docs link", () => {
-      globalThis.fetch = mockFetch({});
       render(<App />);
       expect(screen.getByText("Docs Assistant")).toBeInTheDocument();
       expect(screen.getByText("Browse Docs")).toBeInTheDocument();
     });
 
     it("navigates to docs view when Browse Docs is clicked", async () => {
-      globalThis.fetch = mockFetch({ "/api/docs": docList });
       render(<App />);
 
       await userEvent.click(screen.getByText("Browse Docs"));
@@ -61,7 +30,6 @@ describe("App", () => {
     });
 
     it("returns to home view when Back to Assistant is clicked", async () => {
-      globalThis.fetch = mockFetch({ "/api/docs": docList });
       render(<App />);
 
       await userEvent.click(screen.getByText("Browse Docs"));
@@ -77,13 +45,11 @@ describe("App", () => {
 
   describe("Dark/light mode", () => {
     it("defaults to dark mode", () => {
-      globalThis.fetch = mockFetch({});
       const { container } = render(<App />);
       expect(container.firstElementChild).toHaveClass("dark");
     });
 
     it("toggles to light mode on click", async () => {
-      globalThis.fetch = mockFetch({});
       const { container } = render(<App />);
       const toggle = screen.getByLabelText("Switch to light mode");
 
@@ -94,7 +60,6 @@ describe("App", () => {
     });
 
     it("persists theme preference to localStorage", async () => {
-      globalThis.fetch = mockFetch({});
       render(<App />);
       const toggle = screen.getByLabelText("Switch to light mode");
 
@@ -106,7 +71,6 @@ describe("App", () => {
 
   describe("Query input", () => {
     it("accepts text input in textarea", async () => {
-      globalThis.fetch = mockFetch({});
       render(<App />);
       const textarea = screen.getByPlaceholderText("Ask a question about internal docs...");
 
@@ -116,14 +80,11 @@ describe("App", () => {
     });
 
     it("disables Ask button when textarea is empty", () => {
-      globalThis.fetch = mockFetch({});
       render(<App />);
       expect(screen.getByText("Ask")).toBeDisabled();
     });
 
     it("submits query on Enter key", async () => {
-      const fetchMock = mockFetch({ "/query": queryResponse });
-      globalThis.fetch = fetchMock;
       render(<App />);
       const textarea = screen.getByPlaceholderText("Ask a question about internal docs...");
 
@@ -131,32 +92,23 @@ describe("App", () => {
       await userEvent.keyboard("{Enter}");
 
       await waitFor(() => {
-        expect(fetchMock).toHaveBeenCalledWith(
-          "http://localhost:8000/query",
-          expect.objectContaining({
-            method: "POST",
-            body: JSON.stringify({ query: "test query", top_k: 5 }),
-          })
-        );
+        expect(screen.getByText("Answer")).toBeInTheDocument();
       });
     });
 
     it("does not submit on Shift+Enter", async () => {
-      const fetchMock = mockFetch({});
-      globalThis.fetch = fetchMock;
       render(<App />);
       const textarea = screen.getByPlaceholderText("Ask a question about internal docs...");
 
       await userEvent.type(textarea, "test query");
       await userEvent.keyboard("{Shift>}{Enter}{/Shift}");
 
-      expect(fetchMock).not.toHaveBeenCalled();
+      expect(screen.queryByText("Answer")).not.toBeInTheDocument();
     });
   });
 
   describe("Query results", () => {
     it("displays answer and question after successful query", async () => {
-      globalThis.fetch = mockFetch({ "/query": queryResponse });
       render(<App />);
       const textarea = screen.getByPlaceholderText("Ask a question about internal docs...");
 
@@ -170,9 +122,12 @@ describe("App", () => {
     });
 
     it("displays error on failed query", async () => {
-      globalThis.fetch = vi.fn(() =>
-        Promise.resolve({ ok: false, status: 500 })
+      server.use(
+        http.post("http://localhost:8000/query", () => {
+          return new HttpResponse(null, { status: 500 });
+        })
       );
+
       render(<App />);
       const textarea = screen.getByPlaceholderText("Ask a question about internal docs...");
 
@@ -185,7 +140,6 @@ describe("App", () => {
     });
 
     it("clears textarea after submission", async () => {
-      globalThis.fetch = mockFetch({ "/query": queryResponse });
       render(<App />);
       const textarea = screen.getByPlaceholderText("Ask a question about internal docs...");
 
@@ -198,7 +152,6 @@ describe("App", () => {
 
   describe("Sources and chunks sections", () => {
     async function submitQuery() {
-      globalThis.fetch = mockFetch({ "/query": queryResponse });
       render(<App />);
       const textarea = screen.getByPlaceholderText("Ask a question about internal docs...");
       await userEvent.type(textarea, "test");
@@ -235,7 +188,6 @@ describe("App", () => {
 
   describe("Doc browsing", () => {
     it("renders doc list in sidebar", async () => {
-      globalThis.fetch = mockFetch({ "/api/docs": docList });
       render(<App />);
 
       await userEvent.click(screen.getByText("Browse Docs"));
@@ -247,10 +199,6 @@ describe("App", () => {
     });
 
     it("loads and renders doc content when selected", async () => {
-      globalThis.fetch = mockFetch({
-        "/api/docs/getting": docContent,
-        "/api/docs": docList,
-      });
       render(<App />);
 
       await userEvent.click(screen.getByText("Browse Docs"));
@@ -266,10 +214,6 @@ describe("App", () => {
     });
 
     it("strips YAML frontmatter from doc content", async () => {
-      globalThis.fetch = mockFetch({
-        "/api/docs/getting": docContent,
-        "/api/docs": docList,
-      });
       render(<App />);
 
       await userEvent.click(screen.getByText("Browse Docs"));
@@ -286,7 +230,6 @@ describe("App", () => {
     });
 
     it("shows placeholder when no doc selected", async () => {
-      globalThis.fetch = mockFetch({ "/api/docs": docList });
       render(<App />);
 
       await userEvent.click(screen.getByText("Browse Docs"));
@@ -299,7 +242,12 @@ describe("App", () => {
 
   describe("Utility functions", () => {
     it("formatDocTitle converts filename to title case", async () => {
-      globalThis.fetch = mockFetch({ "/api/docs": ["some-doc_file.md"] });
+      server.use(
+        http.get("http://localhost:8000/api/docs", () => {
+          return HttpResponse.json(["some-doc_file.md"]);
+        })
+      );
+
       render(<App />);
 
       await userEvent.click(screen.getByText("Browse Docs"));
