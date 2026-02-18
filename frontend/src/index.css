@@ -29,3 +29,13 @@ body {
 h1, h2, h3, h4, h5, h6 {
   font-family: "Outfit", system-ui, sans-serif;
 }
+
+@keyframes slideIn {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(0); }
+}
+
+@keyframes slideOut {
+  from { transform: translateX(0); }
+  to { transform: translateX(-100%); }
+}

@@ -4,6 +4,7 @@
  * document as Markdown. Strips YAML frontmatter before display.
  */
 
+import { useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { getMarkdownComponents } from "../markdownConfig";
@@ -18,10 +19,78 @@ interface DocBrowserProps {
 }
 export default function DocBrowser({ docList, selectedDoc, docContent, darkMode, onSelectDoc }: DocBrowserProps) {
   const markdownComponents = getMarkdownComponents(darkMode);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [drawerClosing, setDrawerClosing] = useState(false);
+
+  function closeDrawer() {
+    setDrawerClosing(true);
+  }
+
+  function handleMobileSelect(filename: string) {
+    onSelectDoc(filename);
+    closeDrawer();
+  }
 
   return (
-    <div className="flex gap-6 min-h-[calc(100vh-8rem)]">
-      <aside className="w-64 shrink-0 bg-white dark:bg-vsc-surface border border-gray-200 dark:border-vsc-border rounded-lg overflow-y-auto">
+    <div className="flex flex-col md:flex-row gap-6 min-h-[calc(100vh-8rem)]">
+      {/* Mobile: edge tab to open drawer */}
+      <button
+        onClick={() => setDrawerOpen(true)}
+        className="md:hidden fixed left-0 top-1/2 -translate-y-1/2 z-40 bg-white dark:bg-vsc-surface border border-l-0 border-gray-200 dark:border-vsc-border text-purple-600 dark:text-vsc-accent px-1 py-3 rounded-r-lg shadow-sm text-sm"
+      >
+        ›
+      </button>
+
+      {/* Mobile: slide-in drawer + backdrop */}
+      {(drawerOpen || drawerClosing) && (
+        <div
+          className="md:hidden fixed inset-0 z-50 flex"
+          onClick={closeDrawer}
+        >
+          <div className={`absolute inset-0 bg-black/40 transition-opacity duration-200 ${drawerClosing ? "opacity-0" : "opacity-100"}`} />
+          <nav
+            className={`relative w-72 max-w-[80vw] h-full bg-white dark:bg-vsc-surface shadow-xl overflow-y-auto ${drawerClosing ? "animate-[slideOut_0.2s_ease-in_forwards]" : "animate-[slideIn_0.2s_ease-out]"}`}
+            onClick={(e) => e.stopPropagation()}
+            onAnimationEnd={() => {
+              if (drawerClosing) {
+                setDrawerOpen(false);
+                setDrawerClosing(false);
+              }
+            }}
+          >
+            <div className="flex items-center justify-between p-4 border-b border-gray-100 dark:border-vsc-border">
+              <h2 className="text-sm font-semibold text-purple-700 dark:text-vsc-accent uppercase tracking-wide">Documentation</h2>
+              <button onClick={closeDrawer} className="p-1 text-gray-400 hover:text-gray-600 dark:text-vsc-text-muted dark:hover:text-vsc-text">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+              </button>
+            </div>
+            <ul>
+              {docList.map((filename) => {
+                const isSelected = selectedDoc === filename;
+                return (
+                  <li key={filename}>
+                    <button
+                      onClick={() => handleMobileSelect(filename)}
+                      className={`w-full text-left px-4 py-3 text-sm transition-colors ${
+                        isSelected
+                          ? "bg-purple-50 dark:bg-vsc-selected text-purple-700 dark:text-vsc-accent font-medium"
+                          : "text-gray-700 dark:text-vsc-text-muted hover:bg-gray-50 dark:hover:bg-vsc-hover"
+                      }`}
+                    >
+                      {formatDocTitle(filename)}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </nav>
+        </div>
+      )}
+
+      {/* Desktop: full sidebar */}
+      <aside className="hidden md:block w-64 shrink-0 bg-white dark:bg-vsc-surface border border-gray-200 dark:border-vsc-border rounded-lg overflow-y-auto">
         <h2 className="text-sm font-semibold text-purple-700 dark:text-vsc-accent uppercase tracking-wide p-4 pb-2">Documentation</h2>
         <ul className="border-t border-gray-100 dark:border-vsc-border">
           {docList.map((filename) => {
