@@ -8,10 +8,8 @@ load_dotenv(ENV_FILE)
 
 import chromadb
 from chromadb.utils.embedding_functions import OpenAIEmbeddingFunction
-import markdown
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
 from openai import OpenAI
 from pydantic import BaseModel, Field
 
@@ -203,45 +201,16 @@ def debug_query(req: RetrieveRequest):
     return DebugQueryResponse(query=req.query, results=debug_results)
 
 
-HTML_TEMPLATE = """<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{title}</title>
-<style>
-  body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; max-width: 48rem; margin: 2rem auto; padding: 0 1rem; line-height: 1.6; color: #1a1a1a; }}
-  h1, h2, h3, h4 {{ margin-top: 1.5em; margin-bottom: 0.5em; }}
-  h1 {{ font-size: 1.8rem; border-bottom: 1px solid #e5e7eb; padding-bottom: 0.3em; }}
-  h2 {{ font-size: 1.4rem; }}
-  code {{ background: #f3f4f6; padding: 0.15em 0.35em; border-radius: 4px; font-size: 0.9em; }}
-  pre {{ background: #f3f4f6; padding: 1em; border-radius: 8px; overflow-x: auto; }}
-  pre code {{ background: none; padding: 0; }}
-  ul, ol {{ padding-left: 1.5em; }}
-  li {{ margin: 0.25em 0; }}
-  a {{ color: #2563eb; }}
-  nav {{ margin-bottom: 1.5em; font-size: 0.875rem; }}
-</style>
-</head>
-<body><nav><a href="http://localhost:5173">&larr; Back to Docs Assistant</a></nav>{body}</body>
-</html>"""
-
-
-@app.get("/source-docs")
-def source_docs_index():
-    """List all available documentation files."""
+@app.get("/api/docs")
+def list_docs():
+    """Return a list of available documentation filenames."""
     files = sorted(DOCS_DIR.glob("*.md"))
-    items = []
-    for f in files:
-        title = f.stem.replace("-", " ").replace("_", " ").title()
-        items.append(f'<li><a href="/source-docs/{f.name}">{title}</a></li>')
-    body = "<h1>Documentation</h1>\n<ul>\n" + "\n".join(items) + "\n</ul>"
-    return HTMLResponse(HTML_TEMPLATE.format(title="Documentation", body=body))
+    return [f.name for f in files]
 
 
-@app.get("/source-docs/{filename}")
-def source_doc(filename: str):
-    # Restrict to .md files inside DOCS_DIR
+@app.get("/api/docs/{filename}")
+def get_doc(filename: str):
+    """Return the raw markdown content of a documentation file."""
     if not filename.endswith(".md"):
         raise HTTPException(status_code=404, detail="Not found")
     path = (DOCS_DIR / filename).resolve()
@@ -249,7 +218,4 @@ def source_doc(filename: str):
         raise HTTPException(status_code=404, detail="Not found")
 
     md_text = path.read_text(encoding="utf-8")
-    html_body = markdown.markdown(md_text, extensions=["fenced_code", "tables"])
-    title = filename.removesuffix(".md").replace("-", " ").title()
-    body = '<a href="/source-docs" style="font-size:0.875rem">All Docs</a>\n' + html_body
-    return HTMLResponse(HTML_TEMPLATE.format(title=title, body=body))
+    return {"filename": filename, "content": md_text}

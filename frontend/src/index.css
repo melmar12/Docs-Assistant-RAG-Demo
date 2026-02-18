@@ -1,2 +1,31 @@
 @import "tailwindcss";
 @plugin "@tailwindcss/typography";
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --color-vsc-bg: #1e1e1e;
+  --color-vsc-surface: #252526;
+  --color-vsc-border: #3c3c3c;
+  --color-vsc-text: #d4d4d4;
+  --color-vsc-text-muted: #9d9d9d;
+  --color-vsc-text-faint: #6d6d6d;
+  --color-vsc-accent: #c5a5e6;
+  --color-vsc-accent-muted: #a07cc5;
+  --color-vsc-link: #d2a8ea;
+  --color-vsc-link-hover: #e0c4f0;
+  --color-vsc-heading: #cebfdf;
+  --color-vsc-selected: #2a2d3e;
+  --color-vsc-hover: #2a2a2a;
+  --color-vsc-input: #313131;
+  --color-vsc-code-bg: #2d2d2d;
+  --color-vsc-badge-bg: #352f44;
+  --color-vsc-badge-text: #c5a5e6;
+}
+
+body {
+  font-family: "Inter", system-ui, sans-serif;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: "Outfit", system-ui, sans-serif;
+}

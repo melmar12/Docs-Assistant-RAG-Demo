@@ -20,7 +20,9 @@ A retrieval-augmented generation (RAG) tool for querying internal documentation.
 │   └── requirements.txt
 └── frontend/         # React + TypeScript UI
     ├── src/
-    │   ├── App.tsx
+    │   ├── App.tsx           # Main application component
+    │   ├── App.test.tsx      # Frontend tests (Vitest)
+    │   ├── index.css         # Theme tokens and global styles
     │   └── main.tsx
     └── package.json
 ```
@@ -94,8 +96,15 @@ Open http://localhost:5173 in your browser and start asking questions about your
 | POST | `/query` | Ask a question (retrieval + generation) |
 | POST | `/retrieve` | Raw semantic search over document chunks |
 | POST | `/debug-query` | Diagnostic view of retrieval results |
-| GET | `/source-docs` | List all ingested documentation files |
-| GET | `/source-docs/{filename}` | View a rendered source document |
+| GET | `/api/docs` | List all available documentation filenames |
+| GET | `/api/docs/{filename}` | Get raw markdown content of a document |
+
+## Running Frontend Tests
+
+```bash
+cd frontend
+npm test
+```
 
 ## Running the Evaluation
 
