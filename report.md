@@ -1,4 +1,4 @@
-# RAG Internal Docs Assistant — Implementation and Evaluation Report
+# RAG Docs Assistant — Report
 
 ## Motivation
 
