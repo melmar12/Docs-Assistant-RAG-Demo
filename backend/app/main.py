@@ -211,7 +211,7 @@ def list_docs():
 @app.get("/api/docs/{filename}")
 def get_doc(filename: str):
     """Return the raw markdown content of a documentation file."""
-    if not filename.endswith(".md"):
+    if not filename.endswith(".md") or "/" in filename or "\\" in filename or ".." in filename:
         raise HTTPException(status_code=404, detail="Not found")
     path = (DOCS_DIR / filename).resolve()
     if not path.is_relative_to(DOCS_DIR.resolve()) or not path.is_file():
