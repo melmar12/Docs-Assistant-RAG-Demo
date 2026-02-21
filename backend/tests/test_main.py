@@ -1,5 +1,5 @@
 import os
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 os.environ.setdefault("OPENAI_API_KEY", "test-key")
 
@@ -142,7 +142,7 @@ def test_query_stream_empty_collection(mock_col, client):
     assert "No documents ingested yet" in res.text
 
 
-@patch("backend.app.main.openai_client")
+@patch("backend.app.main.async_openai_client")
 @patch("backend.app.main.collection")
 def test_query_stream_success(mock_col, mock_openai, client):
     mock_col.count.return_value = 5
@@ -154,7 +154,12 @@ def test_query_stream_success(mock_col, mock_openai, client):
     end_chunk = MagicMock()
     end_chunk.choices = [MagicMock()]
     end_chunk.choices[0].delta.content = None
-    mock_openai.chat.completions.create.return_value = iter([token_chunk, end_chunk])
+
+    async def async_stream():
+        yield token_chunk
+        yield end_chunk
+
+    mock_openai.chat.completions.create = AsyncMock(return_value=async_stream())
 
     res = client.post("/query/stream", json={"query": "How do I onboard?"})
     assert res.status_code == 200
@@ -176,12 +181,12 @@ def test_query_stream_vector_search_failure(mock_col, client):
     assert "Vector search failed" in res.text
 
 
-@patch("backend.app.main.openai_client")
+@patch("backend.app.main.async_openai_client")
 @patch("backend.app.main.collection")
 def test_query_stream_openai_failure(mock_col, mock_openai, client):
     mock_col.count.return_value = 5
     mock_col.query.return_value = MOCK_QUERY_RESULTS
-    mock_openai.chat.completions.create.side_effect = Exception("API timeout")
+    mock_openai.chat.completions.create = AsyncMock(side_effect=Exception("API timeout"))
 
     res = client.post("/query/stream", json={"query": "test"})
     assert res.status_code == 200
