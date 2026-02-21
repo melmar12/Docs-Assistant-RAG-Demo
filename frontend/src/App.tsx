@@ -19,11 +19,6 @@ interface ChunkResult {
   text: string;
 }
 
-interface QueryResponse {
-  answer: string;
-  sources: string[];
-  chunks: ChunkResult[];
-}
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
 const STORAGE_KEY = "docs-assistant-state";
