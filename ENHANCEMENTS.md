@@ -29,7 +29,7 @@ Worth doing once quick wins are in place.
 ### Test Coverage
 - [ ] **Frontend component tests** — `QueryInput`, `AnswerCard`, `SourcesPanel`, `ChunksPanel`, and `DocBrowser` have no unit tests. The MSW + Vitest setup is already in place.
 - [x] **Backend unit tests for ingestion** — The chunk-splitting logic in `backend/app/ingest.py` is the most complex code in the repo and has zero test coverage.
-- [ ] **Backend integration tests** — Test the `/query` and `/retrieve` endpoints with a real (test) ChromaDB instance.
+- [x] **Backend integration tests** — Test the `/query` and `/retrieve` endpoints with a real (test) ChromaDB instance.
 
 ### Features
 - [ ] **User feedback on answers** (thumbs up/down) — Closes the loop on RAG quality. Without this there's no signal on whether answers are actually good.
