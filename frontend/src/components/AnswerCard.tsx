@@ -14,9 +14,10 @@ interface AnswerCardProps {
   answer: string | null;
   error: string | null;
   darkMode: boolean;
+  streaming: boolean;
   onNavigateToDoc: (filename: string) => void;
 }
-export default function AnswerCard({ submittedQuery, answer, error, darkMode, onNavigateToDoc }: AnswerCardProps) {
+export default function AnswerCard({ submittedQuery, answer, error, darkMode, streaming, onNavigateToDoc }: AnswerCardProps) {
   const markdownComponents = getMarkdownComponents(darkMode);
 
   return (
@@ -68,6 +69,12 @@ export default function AnswerCard({ submittedQuery, answer, error, darkMode, on
                   `(Source: [${filename}](#doc/${filename}))`
               )}
             </ReactMarkdown>
+            {streaming && (
+              <span
+                className="inline-block w-0.5 h-4 bg-gray-700 dark:bg-vsc-text ml-0.5 animate-pulse"
+                aria-hidden="true"
+              />
+            )}
           </div>
         </div>
       )}

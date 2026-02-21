@@ -6,8 +6,10 @@ browser API (/api/docs). Uses ChromaDB for vector search and OpenAI
 for embeddings and completions.
 """
 
+import json
 import os
 from pathlib import Path
+from typing import AsyncGenerator
 
 from dotenv import load_dotenv
 
@@ -18,7 +20,8 @@ import chromadb
 from chromadb.utils.embedding_functions import OpenAIEmbeddingFunction
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from openai import OpenAI
+from fastapi.responses import StreamingResponse
+from openai import AsyncOpenAI, OpenAI
 from pydantic import BaseModel, Field
 from slowapi import Limiter
 from slowapi.errors import RateLimitExceeded
@@ -61,6 +64,7 @@ embedding_fn = OpenAIEmbeddingFunction(
 )
 
 openai_client = OpenAI(api_key=api_key, timeout=30.0)
+async_openai_client = AsyncOpenAI(api_key=api_key, timeout=30.0)
 
 chroma_client = chromadb.PersistentClient(path=str(CHROMA_DIR))
 collection = chroma_client.get_or_create_collection(
@@ -187,6 +191,74 @@ def query(req: QueryRequest, request: Request):
         answer=completion.choices[0].message.content,
         sources=sources,
         chunks=chunks,
+    )
+
+
+async def stream_query_response(req: QueryRequest) -> AsyncGenerator[str, None]:
+    """Async generator that yields SSE-formatted strings for /query/stream.
+
+    Event sequence:
+      metadata — sources + chunks, emitted right after vector search
+      token    — one per LLM output token
+      done     — signals end of stream
+      error    — emitted instead of done if something goes wrong
+    """
+    if collection.count() == 0:
+        yield f"event: error\ndata: {json.dumps({'detail': 'No documents ingested yet. Run: python -m app.ingest'})}\n\n"
+        return
+
+    try:
+        results = collection.query(
+            query_texts=[req.query],
+            n_results=min(req.top_k, collection.count()),
+        )
+
+        context_parts, sources, chunks = [], [], []
+        for doc_id, distance, text in zip(
+            results["ids"][0],
+            results["distances"][0],
+            results["documents"][0],
+        ):
+            source = doc_id.split("::")[0]
+            context_parts.append(f"[Source: {source}]\n{text}")
+            if source not in sources:
+                sources.append(source)
+            chunks.append(ChunkResult(doc_id=doc_id, score=round(1 - distance, 4), text=text))
+
+        yield f"event: metadata\ndata: {json.dumps({'sources': sources, 'chunks': [c.model_dump() for c in chunks]})}\n\n"
+    except Exception as e:
+        yield f"event: error\ndata: {json.dumps({'detail': f'Vector search failed: {e}'})}\n\n"
+        return
+
+    try:
+        stream = await async_openai_client.chat.completions.create(
+            model=COMPLETION_MODEL,
+            temperature=0.1,
+            stream=True,
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT.format(context="\n\n---\n\n".join(context_parts))},
+                {"role": "user", "content": req.query},
+            ],
+        )
+        async for chunk in stream:
+            delta = chunk.choices[0].delta
+            if delta.content:
+                yield f"event: token\ndata: {json.dumps({'text': delta.content})}\n\n"
+    except Exception as e:
+        yield f"event: error\ndata: {json.dumps({'detail': f'LLM request failed: {e}'})}\n\n"
+        return
+
+    yield "event: done\ndata: {}\n\n"
+
+
+@app.post("/query/stream")
+@limiter.limit("10/minute")
+async def query_stream(req: QueryRequest, request: Request):
+    """Stream retrieval and LLM generation as Server-Sent Events."""
+    return StreamingResponse(
+        stream_query_response(req),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
 
 
