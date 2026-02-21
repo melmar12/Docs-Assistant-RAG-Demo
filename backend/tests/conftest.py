@@ -38,7 +38,7 @@ def reset_rate_limiter():
 # Seed data — shared across integration tests
 # ---------------------------------------------------------------------------
 
-SEED_IDS = ["guide.md::0", "guide.md::1", "faq.md::0"]
+SEED_IDS = ["guide.md::chunk0", "guide.md::chunk1", "faq.md::chunk0"]
 SEED_DOCUMENTS = [
     "## Installation\n\nInstall with pip install mypackage.",
     "## Configuration\n\nSet the API_KEY environment variable.",
