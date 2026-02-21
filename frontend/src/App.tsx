@@ -111,40 +111,52 @@ function App() {
       let buffer = "";
       let accumulatedAnswer = "";
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
 
-        buffer += decoder.decode(value, { stream: true });
+          buffer += decoder.decode(value, { stream: true });
 
-        const messages = buffer.split("\n\n");
-        buffer = messages.pop() ?? "";
+          const messages = buffer.split("\n\n");
+          buffer = messages.pop() ?? "";
 
-        for (const message of messages) {
-          if (!message.trim()) continue;
+          for (const message of messages) {
+            if (!message.trim()) continue;
 
-          const eventMatch = message.match(/^event:\s*(.+)$/m);
-          const dataMatch = message.match(/^data:\s*(.+)$/m);
-          if (!dataMatch) continue;
+            const eventMatch = message.match(/^event:\s*(.+)$/m);
+            const dataMatch = message.match(/^data:\s*(.+)$/m);
+            if (!dataMatch) continue;
 
-          const eventType = eventMatch?.[1]?.trim() ?? "message";
-          const data = JSON.parse(dataMatch[1].trim());
+            const eventType = eventMatch?.[1]?.trim() ?? "message";
+            let data: any;
+            try {
+              data = JSON.parse(dataMatch[1].trim());
+            } catch (e) {
+              console.error("Failed to parse SSE data:", e, dataMatch[1]);
+              continue;
+            }
 
-          if (eventType === "metadata") {
-            setSubmittedQuery(currentQuery);
-            setSources(data.sources);
-            setChunks(data.chunks);
-            setLoading(false);
-            setStreaming(true);
-          } else if (eventType === "token") {
-            accumulatedAnswer += data.text;
-            setAnswer(accumulatedAnswer);
-          } else if (eventType === "done") {
-            setStreaming(false);
-          } else if (eventType === "error") {
-            throw new Error(data.detail ?? "Stream error");
+            if (eventType === "metadata") {
+              setSubmittedQuery(currentQuery);
+              setSources(data.sources);
+              setChunks(data.chunks);
+              setLoading(false);
+              setStreaming(true);
+            } else if (eventType === "token") {
+              accumulatedAnswer += data.text;
+              setAnswer(accumulatedAnswer);
+            } else if (eventType === "done") {
+              setStreaming(false);
+            } else if (eventType === "error") {
+              throw new Error(data.detail ?? "Stream error");
+            }
           }
         }
+      } catch (e) {
+        console.error("Stream processing error:", e);
+        reader.cancel();
+        throw e;
       }
     } catch (e) {
       setSubmittedQuery(currentQuery);

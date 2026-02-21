@@ -206,24 +206,28 @@ async def stream_query_response(req: QueryRequest) -> AsyncGenerator[str, None]:
         yield f"event: error\ndata: {json.dumps({'detail': 'No documents ingested yet. Run: python -m app.ingest'})}\n\n"
         return
 
-    results = collection.query(
-        query_texts=[req.query],
-        n_results=min(req.top_k, collection.count()),
-    )
+    try:
+        results = collection.query(
+            query_texts=[req.query],
+            n_results=min(req.top_k, collection.count()),
+        )
 
-    context_parts, sources, chunks = [], [], []
-    for doc_id, distance, text in zip(
-        results["ids"][0],
-        results["distances"][0],
-        results["documents"][0],
-    ):
-        source = doc_id.split("::")[0]
-        context_parts.append(f"[Source: {source}]\n{text}")
-        if source not in sources:
-            sources.append(source)
-        chunks.append(ChunkResult(doc_id=doc_id, score=round(1 - distance, 4), text=text))
+        context_parts, sources, chunks = [], [], []
+        for doc_id, distance, text in zip(
+            results["ids"][0],
+            results["distances"][0],
+            results["documents"][0],
+        ):
+            source = doc_id.split("::")[0]
+            context_parts.append(f"[Source: {source}]\n{text}")
+            if source not in sources:
+                sources.append(source)
+            chunks.append(ChunkResult(doc_id=doc_id, score=round(1 - distance, 4), text=text))
 
-    yield f"event: metadata\ndata: {json.dumps({'sources': sources, 'chunks': [c.model_dump() for c in chunks]})}\n\n"
+        yield f"event: metadata\ndata: {json.dumps({'sources': sources, 'chunks': [c.model_dump() for c in chunks]})}\n\n"
+    except Exception as e:
+        yield f"event: error\ndata: {json.dumps({'detail': f'Vector search failed: {e}'})}\n\n"
+        return
 
     try:
         stream = openai_client.chat.completions.create(
