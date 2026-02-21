@@ -1,6 +1,6 @@
 # RAG Internal Docs Assistant
 
-[![Live Demo](https://img.shields.io/badge/demo-live-brightgreen)](https://rag-docs-frontend.onrender.com/)
+[![Live Demo](https://img.shields.io/badge/demo-live-brightgreen)](https://rag-docs-frontend-tq88.onrender.com/)
 
 A retrieval-augmented generation (RAG) tool for querying internal documentation. Ask natural-language questions and get answers grounded in your company docs, with source citations.
 
