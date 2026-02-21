@@ -132,9 +132,9 @@ class TestQueryIntegration:
             res = integration_client.post("/query", json={"query": "install", "top_k": 5})
 
         doc_ids = [c["doc_id"] for c in res.json()["chunks"]]
-        assert "guide.md::0" in doc_ids
-        assert "guide.md::1" in doc_ids
-        assert "faq.md::0" in doc_ids
+        assert "guide.md::chunk0" in doc_ids
+        assert "guide.md::chunk1" in doc_ids
+        assert "faq.md::chunk0" in doc_ids
 
     def test_query_sources_deduplicated(self, integration_client):
         """Two guide.md chunks → exactly one 'guide.md' in sources list."""
