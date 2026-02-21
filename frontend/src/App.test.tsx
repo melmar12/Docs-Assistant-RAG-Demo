@@ -108,26 +108,46 @@ describe("App", () => {
     });
 
     it("shows spinner and disables button while query is in flight", async () => {
-      let resolveRequest!: (r: Response) => void;
+      let sendMetadata!: () => void;
+      const metadataReady = new Promise<void>((resolve) => {
+        sendMetadata = resolve;
+      });
+
       server.use(
-        http.post("http://localhost:8000/query", () =>
-          new Promise<Response>((resolve) => {
-            resolveRequest = resolve;
-          })
-        )
+        http.post("http://localhost:8000/query/stream", async () => {
+          const encoder = new TextEncoder();
+          const { sources, chunks, answer } = queryResponse;
+          const stream = new ReadableStream<Uint8Array>({
+            async start(controller) {
+              await metadataReady;
+              controller.enqueue(
+                encoder.encode(`event: metadata\ndata: ${JSON.stringify({ sources, chunks })}\n\n`)
+              );
+              controller.enqueue(
+                encoder.encode(`event: token\ndata: ${JSON.stringify({ text: answer })}\n\n`)
+              );
+              controller.enqueue(encoder.encode("event: done\ndata: {}\n\n"));
+              controller.close();
+            },
+          });
+          return new HttpResponse(stream, {
+            status: 200,
+            headers: { "Content-Type": "text/event-stream" },
+          });
+        })
       );
 
       render(<App />);
       const textarea = screen.getByPlaceholderText("Ask a question about internal docs...");
       await userEvent.type(textarea, "test query");
 
-      // don't await — request stays in flight until we resolve it
+      // don't await — stream is blocked until we call sendMetadata()
       userEvent.click(screen.getByText("Ask"));
 
       await waitFor(() => expect(screen.getByText("Asking...")).toBeInTheDocument());
       expect(screen.getByRole("button", { name: /asking/i })).toBeDisabled();
 
-      resolveRequest(HttpResponse.json(queryResponse) as unknown as Response);
+      sendMetadata();
       await waitFor(() => expect(screen.getByText("Answer")).toBeInTheDocument());
     });
   });
@@ -148,7 +168,7 @@ describe("App", () => {
 
     it("displays error on failed query", async () => {
       server.use(
-        http.post("http://localhost:8000/query", () => {
+        http.post("http://localhost:8000/query/stream", () => {
           return new HttpResponse(null, { status: 500 });
         })
       );

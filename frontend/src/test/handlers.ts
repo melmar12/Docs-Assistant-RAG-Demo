@@ -18,9 +18,33 @@ export const docContent = {
   content: "---\ntitle: Getting Started\n---\n# Getting Started\n\nWelcome to the docs.",
 };
 
+function makeSseStream(): ReadableStream<Uint8Array> {
+  const encoder = new TextEncoder();
+  const { sources, chunks, answer } = queryResponse;
+  return new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(
+        encoder.encode(`event: metadata\ndata: ${JSON.stringify({ sources, chunks })}\n\n`)
+      );
+      controller.enqueue(
+        encoder.encode(`event: token\ndata: ${JSON.stringify({ text: answer })}\n\n`)
+      );
+      controller.enqueue(encoder.encode("event: done\ndata: {}\n\n"));
+      controller.close();
+    },
+  });
+}
+
 export const handlers = [
   http.post(`${API_URL}/query`, () => {
     return HttpResponse.json(queryResponse);
+  }),
+
+  http.post(`${API_URL}/query/stream`, () => {
+    return new HttpResponse(makeSseStream(), {
+      status: 200,
+      headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache" },
+    });
   }),
 
   http.get(`${API_URL}/api/docs`, () => {

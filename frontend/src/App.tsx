@@ -64,6 +64,7 @@ function App() {
   const [answer, setAnswer] = useState<string | null>(saved?.answer ?? null);
   const [sources, setSources] = useState<string[]>(saved?.sources ?? []);
   const [loading, setLoading] = useState(false);
+  const [streaming, setStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sourcesOpen, setSourcesOpen] = useState(false);
   const [chunks, setChunks] = useState<ChunkResult[]>(saved?.chunks ?? []);
@@ -86,6 +87,7 @@ function App() {
     const currentQuery = query.trim();
     setQuery("");
     setLoading(true);
+    setStreaming(false);
     setError(null);
     setSubmittedQuery(null);
     setAnswer(null);
@@ -95,24 +97,61 @@ function App() {
     setChunksOpen(false);
 
     try {
-      const res = await fetch(`${API_URL}/query`, {
+      const res = await fetch(`${API_URL}/query/stream`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ query: currentQuery, top_k: 5 }),
       });
 
       if (!res.ok) throw new Error(`Request failed (${res.status})`);
+      if (!res.body) throw new Error("No response body");
 
-      const data: QueryResponse = await res.json();
-      setSubmittedQuery(currentQuery);
-      setAnswer(data.answer);
-      setSources(data.sources);
-      setChunks(data.chunks);
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let accumulatedAnswer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+
+        const messages = buffer.split("\n\n");
+        buffer = messages.pop() ?? "";
+
+        for (const message of messages) {
+          if (!message.trim()) continue;
+
+          const eventMatch = message.match(/^event:\s*(.+)$/m);
+          const dataMatch = message.match(/^data:\s*(.+)$/m);
+          if (!dataMatch) continue;
+
+          const eventType = eventMatch?.[1]?.trim() ?? "message";
+          const data = JSON.parse(dataMatch[1].trim());
+
+          if (eventType === "metadata") {
+            setSubmittedQuery(currentQuery);
+            setSources(data.sources);
+            setChunks(data.chunks);
+            setLoading(false);
+            setStreaming(true);
+          } else if (eventType === "token") {
+            accumulatedAnswer += data.text;
+            setAnswer(accumulatedAnswer);
+          } else if (eventType === "done") {
+            setStreaming(false);
+          } else if (eventType === "error") {
+            throw new Error(data.detail ?? "Stream error");
+          }
+        }
+      }
     } catch (e) {
       setSubmittedQuery(currentQuery);
       setError(e instanceof Error ? e.message : "Something went wrong");
     } finally {
       setLoading(false);
+      setStreaming(false);
     }
   }
 
@@ -196,6 +235,7 @@ function App() {
               answer={answer}
               error={error}
               darkMode={darkMode}
+              streaming={streaming}
               onNavigateToDoc={(filename) => navigateToDocs(filename)}
             />
 
