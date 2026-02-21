@@ -21,7 +21,7 @@ from chromadb.utils.embedding_functions import OpenAIEmbeddingFunction
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
-from openai import OpenAI
+from openai import AsyncOpenAI, OpenAI
 from pydantic import BaseModel, Field
 from slowapi import Limiter
 from slowapi.errors import RateLimitExceeded
@@ -64,6 +64,7 @@ embedding_fn = OpenAIEmbeddingFunction(
 )
 
 openai_client = OpenAI(api_key=api_key, timeout=30.0)
+async_openai_client = AsyncOpenAI(api_key=api_key, timeout=30.0)
 
 chroma_client = chromadb.PersistentClient(path=str(CHROMA_DIR))
 collection = chroma_client.get_or_create_collection(
@@ -226,7 +227,7 @@ async def stream_query_response(req: QueryRequest) -> AsyncGenerator[str, None]:
     yield f"event: metadata\ndata: {json.dumps({'sources': sources, 'chunks': [c.model_dump() for c in chunks]})}\n\n"
 
     try:
-        stream = openai_client.chat.completions.create(
+        stream = await async_openai_client.chat.completions.create(
             model=COMPLETION_MODEL,
             temperature=0.1,
             stream=True,
@@ -235,7 +236,7 @@ async def stream_query_response(req: QueryRequest) -> AsyncGenerator[str, None]:
                 {"role": "user", "content": req.query},
             ],
         )
-        for chunk in stream:
+        async for chunk in stream:
             delta = chunk.choices[0].delta
             if delta.content:
                 yield f"event: token\ndata: {json.dumps({'text': delta.content})}\n\n"
