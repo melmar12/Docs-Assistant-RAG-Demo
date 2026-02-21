@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { beforeEach, describe, expect, it } from "vitest";
 import App from "./App";
+import { queryResponse } from "./test/handlers";
 import { server } from "./test/server";
 
 beforeEach(() => {
@@ -104,6 +105,30 @@ describe("App", () => {
       await userEvent.keyboard("{Shift>}{Enter}{/Shift}");
 
       expect(screen.queryByText("Answer")).not.toBeInTheDocument();
+    });
+
+    it("shows spinner and disables button while query is in flight", async () => {
+      let resolveRequest!: (r: Response) => void;
+      server.use(
+        http.post("http://localhost:8000/query", () =>
+          new Promise<Response>((resolve) => {
+            resolveRequest = resolve;
+          })
+        )
+      );
+
+      render(<App />);
+      const textarea = screen.getByPlaceholderText("Ask a question about internal docs...");
+      await userEvent.type(textarea, "test query");
+
+      // don't await — request stays in flight until we resolve it
+      userEvent.click(screen.getByText("Ask"));
+
+      await waitFor(() => expect(screen.getByText("Asking...")).toBeInTheDocument());
+      expect(screen.getByRole("button", { name: /asking/i })).toBeDisabled();
+
+      resolveRequest(HttpResponse.json(queryResponse) as unknown as Response);
+      await waitFor(() => expect(screen.getByText("Answer")).toBeInTheDocument());
     });
   });
 
