@@ -26,3 +26,33 @@ uvicorn backend.app.main:app --reload
 ```
 
 The API runs at http://localhost:8000. Docs at http://localhost:8000/docs.
+
+## Git Workflow
+
+At the start of each session, sync remote state before doing any branch work:
+
+```bash
+git fetch --prune
+```
+
+This removes tracking refs for branches deleted on GitHub (e.g. after a PR merge with auto-delete enabled).
+
+To see stale local branches that no longer have a remote counterpart:
+
+```bash
+git branch -vv | grep ': gone]'
+```
+
+To delete them:
+
+```bash
+git branch -vv | grep ': gone]' | awk '{print $1}' | xargs git branch -d
+```
+
+To check PR status without waiting for the user to report it:
+
+```bash
+gh pr list --state open           # open PRs
+gh pr list --state merged         # recently merged PRs
+gh pr view <number-or-branch>     # status of a specific PR
+```
