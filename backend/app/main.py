@@ -135,32 +135,34 @@ collection = chroma_client.get_or_create_collection(
 
 def _openai_call_with_retry(fn):
     """Call fn() with exponential backoff on transient OpenAI errors (sync)."""
-    for attempt in range(1, OPENAI_MAX_RETRIES + 1):
+    max_attempts = max(1, OPENAI_MAX_RETRIES)
+    for attempt in range(1, max_attempts + 1):
         try:
             return fn()
         except OPENAI_RETRYABLE as e:
-            if attempt == OPENAI_MAX_RETRIES:
+            if attempt == max_attempts:
                 raise
             delay = OPENAI_RETRY_BASE_DELAY * (2 ** (attempt - 1)) + random.uniform(0, 0.5)
             logger.warning(
                 "openai_retry",
-                extra={"attempt": attempt, "max_attempts": OPENAI_MAX_RETRIES, "delay_s": round(delay, 2), "error": str(e)},
+                extra={"attempt": attempt, "max_attempts": max_attempts, "delay_s": round(delay, 2), "error": str(e)},
             )
             time.sleep(delay)
 
 
 async def _async_openai_call_with_retry(coro_fn):
     """Call coro_fn() with exponential backoff on transient OpenAI errors (async)."""
-    for attempt in range(1, OPENAI_MAX_RETRIES + 1):
+    max_attempts = max(1, OPENAI_MAX_RETRIES)
+    for attempt in range(1, max_attempts + 1):
         try:
             return await coro_fn()
         except OPENAI_RETRYABLE as e:
-            if attempt == OPENAI_MAX_RETRIES:
+            if attempt == max_attempts:
                 raise
             delay = OPENAI_RETRY_BASE_DELAY * (2 ** (attempt - 1)) + random.uniform(0, 0.5)
             logger.warning(
                 "openai_retry",
-                extra={"attempt": attempt, "max_attempts": OPENAI_MAX_RETRIES, "delay_s": round(delay, 2), "error": str(e)},
+                extra={"attempt": attempt, "max_attempts": max_attempts, "delay_s": round(delay, 2), "error": str(e)},
             )
             await asyncio.sleep(delay)
 
