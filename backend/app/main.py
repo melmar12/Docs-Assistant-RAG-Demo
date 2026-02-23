@@ -21,6 +21,9 @@ load_dotenv(ENV_FILE)
 
 from app.logging_config import request_id_var, setup_logging
 
+# setup_logging() is called here intentionally — before third-party imports —
+# so that the root logger is configured with JsonFormatter before any library
+# (chromadb, openai, uvicorn, …) registers its own handlers or emits records.
 setup_logging()
 logger = logging.getLogger(__name__)
 
@@ -76,8 +79,10 @@ async def logging_middleware(request: Request, call_next):
             "client_ip": request.client.host if request.client else None,
         },
     )
+    response = None
     try:
         response = await call_next(request)
+        return response
     except Exception:
         logger.exception("request_unhandled_exception")
         raise
@@ -88,10 +93,10 @@ async def logging_middleware(request: Request, call_next):
             extra={
                 "endpoint": request.url.path,
                 "latency_ms": latency_ms,
+                "status_code": response.status_code if response is not None else None,
             },
         )
         request_id_var.reset(token)
-    return response
 
 
 # Initialize Chroma client + collection once at startup
@@ -235,6 +240,7 @@ def query(req: QueryRequest, request: Request):
     logger.info(
         "retrieval_complete",
         extra={
+            "query": req.query,
             "num_results": len(chunks),
             "top_score": chunks[0].score if chunks else None,
             "latency_ms": retrieval_ms,
@@ -339,7 +345,7 @@ async def stream_query_response(req: QueryRequest) -> AsyncGenerator[str, None]:
                 yield f"event: token\ndata: {json.dumps({'text': delta.content})}\n\n"
         llm_ms = round((time.perf_counter() - t1) * 1000)
         logger.info(
-            "stream_llm_done",
+            "stream_llm_complete",
             extra={"model": COMPLETION_MODEL, "latency_ms": llm_ms, "num_sources": len(sources)},
         )
     except Exception as e:
