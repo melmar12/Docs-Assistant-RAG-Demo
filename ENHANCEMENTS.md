@@ -27,7 +27,7 @@ Worth doing once quick wins are in place.
 - [ ] **Incremental document ingestion** — The current pipeline deletes and recreates the entire ChromaDB collection on every run, causing downtime. Switch to upsert-only.
 
 ### Test Coverage
-- [ ] **Frontend component tests** — `QueryInput`, `AnswerCard`, `SourcesPanel`, `ChunksPanel`, and `DocBrowser` have no unit tests. The MSW + Vitest setup is already in place.
+- [x] **Frontend component tests** — `QueryInput`, `AnswerCard`, `SourcesPanel`, `ChunksPanel`, and `DocBrowser` have no unit tests. The MSW + Vitest setup is already in place.
 - [x] **Backend unit tests for ingestion** — The chunk-splitting logic in `backend/app/ingest.py` is the most complex code in the repo and has zero test coverage.
 - [x] **Backend integration tests** — Test the `/query` and `/retrieve` endpoints with a real (test) ChromaDB instance.
 
