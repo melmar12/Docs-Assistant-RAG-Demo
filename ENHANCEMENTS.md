@@ -12,7 +12,7 @@ Low effort, high impact. Good starting points.
 - [ ] **Copy-to-clipboard button** on `AnswerCard` — Let users easily copy answers.
 - [ ] **"Try Again" button** on failed queries — Currently there's no retry path after an error.
 - [ ] **ARIA labels on collapsible panels** — Sources and Chunks panels use `+`/`−` symbols with no accessible label; screen readers can't describe them.
-- [ ] **`env.example` file** — Provide a template showing required environment variables so setup is self-documenting.
+- [x] **`env.example` file** — Provide a template showing required environment variables so setup is self-documenting.
 - [x] **GitHub Actions CI** — Run `vitest` automatically on every PR. The test suite exists but there's no automation enforcing it.
 
 ---
