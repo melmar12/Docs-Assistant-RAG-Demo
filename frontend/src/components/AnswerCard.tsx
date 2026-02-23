@@ -16,10 +16,12 @@ interface AnswerCardProps {
   error: string | null;
   darkMode: boolean;
   streaming: boolean;
+  feedback: "up" | "down" | null;
+  onFeedback: (rating: "up" | "down") => void;
   onNavigateToDoc: (filename: string) => void;
   onRetry?: () => void;
 }
-export default function AnswerCard({ submittedQuery, answer, error, darkMode, streaming, onNavigateToDoc, onRetry }: AnswerCardProps) {
+export default function AnswerCard({ submittedQuery, answer, error, darkMode, streaming, feedback, onFeedback, onNavigateToDoc, onRetry }: AnswerCardProps) {
   const markdownComponents = getMarkdownComponents(darkMode);
   const [copied, setCopied] = useState(false);
   const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -126,6 +128,43 @@ export default function AnswerCard({ submittedQuery, answer, error, darkMode, st
               />
             )}
           </div>
+
+          {!streaming && (
+            <div className="mt-4 pt-3 border-t border-gray-100 dark:border-vsc-border flex items-center gap-3">
+              <span className="text-xs text-gray-400 dark:text-vsc-text-faint">Was this helpful?</span>
+              <button
+                type="button"
+                onClick={() => onFeedback("up")}
+                disabled={feedback !== null}
+                aria-label="Thumbs up"
+                className={`text-base leading-none transition-colors disabled:cursor-default ${
+                  feedback === "up"
+                    ? "text-green-500"
+                    : "text-gray-300 dark:text-vsc-text-faint hover:text-green-500 dark:hover:text-green-400"
+                }`}
+              >
+                👍
+              </button>
+              <button
+                type="button"
+                onClick={() => onFeedback("down")}
+                disabled={feedback !== null}
+                aria-label="Thumbs down"
+                className={`text-base leading-none transition-colors disabled:cursor-default ${
+                  feedback === "down"
+                    ? "text-red-500"
+                    : "text-gray-300 dark:text-vsc-text-faint hover:text-red-500 dark:hover:text-red-400"
+                }`}
+              >
+                👎
+              </button>
+              {feedback && (
+                <span className="text-xs text-gray-400 dark:text-vsc-text-faint">
+                  Thanks for the feedback!
+                </span>
+              )}
+            </div>
+          )}
         </div>
       )}
     </>

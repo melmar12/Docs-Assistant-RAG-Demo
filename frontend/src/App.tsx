@@ -61,6 +61,7 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [streaming, setStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [feedback, setFeedback] = useState<"up" | "down" | null>(null);
   const [sourcesOpen, setSourcesOpen] = useState(false);
   const [chunks, setChunks] = useState<ChunkResult[]>(saved?.chunks ?? []);
   const [chunksOpen, setChunksOpen] = useState(false);
@@ -84,6 +85,7 @@ function App() {
     setLoading(true);
     setStreaming(false);
     setError(null);
+    setFeedback(null);
     setSubmittedQuery(null);
     setAnswer(null);
     setSources([]);
@@ -159,6 +161,21 @@ function App() {
     } finally {
       setLoading(false);
       setStreaming(false);
+    }
+  }
+
+  async function handleFeedback(rating: "up" | "down") {
+    if (!submittedQuery || !answer) return;
+    try {
+      const res = await fetch(`${API_URL}/feedback`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query: submittedQuery, answer, rating }),
+      });
+      if (!res.ok) throw new Error(`Server responded with ${res.status}`);
+      setFeedback(rating);
+    } catch (e) {
+      console.error("Failed to submit feedback:", e);
     }
   }
 
@@ -243,6 +260,8 @@ function App() {
               error={error}
               darkMode={darkMode}
               streaming={streaming}
+              feedback={feedback}
+              onFeedback={handleFeedback}
               onNavigateToDoc={(filename) => navigateToDocs(filename)}
               onRetry={submittedQuery ? () => handleAsk(submittedQuery) : undefined}
             />

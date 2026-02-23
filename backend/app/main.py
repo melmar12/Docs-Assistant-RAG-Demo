@@ -7,14 +7,17 @@ for embeddings and completions.
 """
 
 import asyncio
+import contextlib
 import json
 import logging
 import os
 import random
+import sqlite3
 import time
 import uuid
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import AsyncGenerator
+from typing import AsyncGenerator, Literal
 
 from dotenv import load_dotenv
 
@@ -48,10 +51,28 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
 CHROMA_DIR = Path(__file__).resolve().parent.parent / "chroma_db"
+_default_feedback_db = Path(__file__).resolve().parent.parent / "feedback.db"
+FEEDBACK_DB = Path(os.environ.get("FEEDBACK_DB", str(_default_feedback_db)))
 DOCS_DIR = Path(__file__).resolve().parent.parent / "docs"
 COLLECTION_NAME = "internal_docs"
 EMBEDDING_MODEL = os.environ.get("EMBEDDING_MODEL", "text-embedding-3-small")
 COMPLETION_MODEL = os.environ.get("COMPLETION_MODEL", "gpt-4o-mini")
+
+def _init_feedback_db() -> None:
+    """Create the feedback table if it doesn't exist."""
+    with sqlite3.connect(FEEDBACK_DB) as conn:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS feedback (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                created_at TEXT    NOT NULL,
+                query      TEXT    NOT NULL,
+                answer     TEXT    NOT NULL,
+                rating     TEXT    NOT NULL CHECK(rating IN ('up', 'down')),
+                comment    TEXT
+            )
+            """
+        )
 
 # Retry configuration for transient OpenAI errors (rate limits, timeouts, etc.)
 OPENAI_RETRYABLE = (RateLimitError, APITimeoutError, APIConnectionError, InternalServerError)
@@ -72,7 +93,13 @@ except (TypeError, ValueError):
     )
     OPENAI_RETRY_BASE_DELAY = 1.0
 
-app = FastAPI()
+@contextlib.asynccontextmanager
+async def lifespan(app: FastAPI):
+    _init_feedback_db()
+    yield
+
+
+app = FastAPI(lifespan=lifespan)
 
 limiter = Limiter(key_func=get_remote_address)
 app.state.limiter = limiter
@@ -431,6 +458,30 @@ async def query_stream(req: QueryRequest, request: Request):
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+class FeedbackRequest(BaseModel):
+    query: str
+    answer: str
+    rating: Literal["up", "down"]
+    comment: str | None = None
+
+
+@app.post("/feedback")
+@limiter.limit("10/minute")
+def submit_feedback(req: FeedbackRequest, request: Request):
+    """Record a thumbs-up or thumbs-down rating for an answer."""
+    created_at = datetime.now(timezone.utc).isoformat()
+    with sqlite3.connect(FEEDBACK_DB) as conn:
+        conn.execute(
+            "INSERT INTO feedback (created_at, query, answer, rating, comment) VALUES (?, ?, ?, ?, ?)",
+            (created_at, req.query, req.answer, req.rating, req.comment),
+        )
+    logger.info(
+        "feedback_received",
+        extra={"rating": req.rating, "query_preview": req.query[:120]},
+    )
+    return {"status": "ok"}
 
 
 class DebugChunk(BaseModel):

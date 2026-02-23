@@ -10,6 +10,8 @@ describe("AnswerCard", () => {
     error: null,
     darkMode: false,
     streaming: false,
+    feedback: null as "up" | "down" | null,
+    onFeedback: vi.fn(),
     onNavigateToDoc: vi.fn(),
   };
 

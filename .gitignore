@@ -3,6 +3,7 @@ __pycache__/
 .venv/
 venv/
 chroma_db/
+feedback.db
 .env
 .env.local
 node_modules/
