@@ -23,7 +23,7 @@ Worth doing once quick wins are in place.
 
 ### Reliability & Observability
 - [x] **Structured logging in the backend** — Add JSON-structured logs for queries, retrieval results, latency, and errors. Currently there's no visibility into what's happening in production.
-- [ ] **Retry with exponential backoff for OpenAI calls** — Transient quota/rate errors currently surface as uncaught 500s.
+- [x] **Retry with exponential backoff for OpenAI calls** — Transient quota/rate errors currently surface as uncaught 500s.
 - [ ] **Incremental document ingestion** — The current pipeline deletes and recreates the entire ChromaDB collection on every run, causing downtime. Switch to upsert-only.
 
 ### Test Coverage

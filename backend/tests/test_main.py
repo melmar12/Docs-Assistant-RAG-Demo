@@ -1,6 +1,9 @@
 import os
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
+import openai
+
 os.environ.setdefault("OPENAI_API_KEY", "test-key")
 
 import pytest
@@ -192,4 +195,101 @@ def test_query_stream_openai_failure(mock_col, mock_openai, client):
     assert res.status_code == 200
     assert "event: error" in res.text
     assert "LLM request failed" in res.text
+
+
+# --- Retry with exponential backoff ---
+
+
+def _make_rate_limit_error():
+    """Construct an openai.RateLimitError with a minimal httpx response."""
+    response = httpx.Response(
+        status_code=429,
+        request=httpx.Request("POST", "https://api.openai.com/v1/chat/completions"),
+    )
+    return openai.RateLimitError("Rate limit exceeded", response=response, body=None)
+
+
+@patch("time.sleep")
+@patch("backend.app.main.OPENAI_MAX_RETRIES", 3)
+@patch("backend.app.main.openai_client")
+@patch("backend.app.main.collection")
+def test_query_retries_on_rate_limit_and_succeeds(mock_col, mock_openai, mock_sleep, client):
+    mock_col.count.return_value = 5
+    mock_col.query.return_value = MOCK_QUERY_RESULTS
+    choice = MagicMock()
+    choice.message.content = "Mocked answer."
+    success = MagicMock(choices=[choice])
+    mock_openai.chat.completions.create.side_effect = [_make_rate_limit_error(), success]
+
+    res = client.post("/query", json={"query": "How do I onboard?"})
+
+    assert res.status_code == 200
+    assert res.json()["answer"] == "Mocked answer."
+    assert mock_openai.chat.completions.create.call_count == 2
+    assert mock_sleep.called
+
+
+@patch("time.sleep")
+@patch("backend.app.main.OPENAI_MAX_RETRIES", 2)
+@patch("backend.app.main.openai_client")
+@patch("backend.app.main.collection")
+def test_query_exhausts_retries(mock_col, mock_openai, mock_sleep, client):
+    mock_col.count.return_value = 5
+    mock_col.query.return_value = MOCK_QUERY_RESULTS
+    mock_openai.chat.completions.create.side_effect = _make_rate_limit_error()
+
+    res = client.post("/query", json={"query": "test"})
+
+    assert res.status_code == 503
+    assert "LLM request failed" in res.json()["detail"]
+    assert mock_openai.chat.completions.create.call_count == 2
+
+
+@patch("asyncio.sleep", new_callable=AsyncMock)
+@patch("backend.app.main.OPENAI_MAX_RETRIES", 3)
+@patch("backend.app.main.async_openai_client")
+@patch("backend.app.main.collection")
+def test_query_stream_retries_on_rate_limit_and_succeeds(mock_col, mock_openai, mock_sleep, client):
+    mock_col.count.return_value = 5
+    mock_col.query.return_value = MOCK_QUERY_RESULTS
+
+    token_chunk = MagicMock()
+    token_chunk.choices = [MagicMock()]
+    token_chunk.choices[0].delta.content = "Hello"
+    end_chunk = MagicMock()
+    end_chunk.choices = [MagicMock()]
+    end_chunk.choices[0].delta.content = None
+
+    async def async_stream():
+        yield token_chunk
+        yield end_chunk
+
+    mock_openai.chat.completions.create = AsyncMock(
+        side_effect=[_make_rate_limit_error(), async_stream()]
+    )
+
+    res = client.post("/query/stream", json={"query": "How do I onboard?"})
+
+    assert res.status_code == 200
+    assert "event: token" in res.text
+    assert "Hello" in res.text
+    assert mock_openai.chat.completions.create.call_count == 2
+    assert mock_sleep.called
+
+
+@patch("asyncio.sleep", new_callable=AsyncMock)
+@patch("backend.app.main.OPENAI_MAX_RETRIES", 2)
+@patch("backend.app.main.async_openai_client")
+@patch("backend.app.main.collection")
+def test_query_stream_exhausts_retries(mock_col, mock_openai, mock_sleep, client):
+    mock_col.count.return_value = 5
+    mock_col.query.return_value = MOCK_QUERY_RESULTS
+    mock_openai.chat.completions.create = AsyncMock(side_effect=_make_rate_limit_error())
+
+    res = client.post("/query/stream", json={"query": "test"})
+
+    assert res.status_code == 200
+    assert "event: error" in res.text
+    assert "LLM request failed" in res.text
+    assert mock_openai.chat.completions.create.call_count == 2
 

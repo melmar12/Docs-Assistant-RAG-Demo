@@ -6,9 +6,11 @@ browser API (/api/docs). Uses ChromaDB for vector search and OpenAI
 for embeddings and completions.
 """
 
+import asyncio
 import json
 import logging
 import os
+import random
 import time
 import uuid
 from pathlib import Path
@@ -32,7 +34,14 @@ from chromadb.utils.embedding_functions import OpenAIEmbeddingFunction
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
-from openai import AsyncOpenAI, OpenAI
+from openai import (
+    APIConnectionError,
+    APITimeoutError,
+    AsyncOpenAI,
+    InternalServerError,
+    OpenAI,
+    RateLimitError,
+)
 from pydantic import BaseModel, Field
 from slowapi import Limiter
 from slowapi.errors import RateLimitExceeded
@@ -43,6 +52,25 @@ DOCS_DIR = Path(__file__).resolve().parent.parent / "docs"
 COLLECTION_NAME = "internal_docs"
 EMBEDDING_MODEL = os.environ.get("EMBEDDING_MODEL", "text-embedding-3-small")
 COMPLETION_MODEL = os.environ.get("COMPLETION_MODEL", "gpt-4o-mini")
+
+# Retry configuration for transient OpenAI errors (rate limits, timeouts, etc.)
+OPENAI_RETRYABLE = (RateLimitError, APITimeoutError, APIConnectionError, InternalServerError)
+OPENAI_MAX_RETRIES = int(os.environ.get("OPENAI_MAX_RETRIES", "3"))
+_retry_base_delay_raw = os.environ.get("OPENAI_RETRY_BASE_DELAY", "1.0")
+try:
+    OPENAI_RETRY_BASE_DELAY = float(_retry_base_delay_raw)
+    if OPENAI_RETRY_BASE_DELAY <= 0:
+        logger.warning(
+            "OPENAI_RETRY_BASE_DELAY must be positive; got %r. Falling back to default 1.0.",
+            _retry_base_delay_raw,
+        )
+        OPENAI_RETRY_BASE_DELAY = 1.0
+except (TypeError, ValueError):
+    logger.warning(
+        "Invalid OPENAI_RETRY_BASE_DELAY value %r. Falling back to default 1.0.",
+        _retry_base_delay_raw,
+    )
+    OPENAI_RETRY_BASE_DELAY = 1.0
 
 app = FastAPI()
 
@@ -109,14 +137,48 @@ embedding_fn = OpenAIEmbeddingFunction(
     model_name=EMBEDDING_MODEL,
 )
 
-openai_client = OpenAI(api_key=api_key, timeout=30.0)
-async_openai_client = AsyncOpenAI(api_key=api_key, timeout=30.0)
+openai_client = OpenAI(api_key=api_key, timeout=30.0, max_retries=0)
+async_openai_client = AsyncOpenAI(api_key=api_key, timeout=30.0, max_retries=0)
 
 chroma_client = chromadb.PersistentClient(path=str(CHROMA_DIR))
 collection = chroma_client.get_or_create_collection(
     name=COLLECTION_NAME,
     embedding_function=embedding_fn,
 )
+
+
+def _openai_call_with_retry(fn):
+    """Call fn() with exponential backoff on transient OpenAI errors (sync)."""
+    max_attempts = max(1, OPENAI_MAX_RETRIES)
+    for attempt in range(1, max_attempts + 1):
+        try:
+            return fn()
+        except OPENAI_RETRYABLE as e:
+            if attempt == max_attempts:
+                raise
+            delay = OPENAI_RETRY_BASE_DELAY * (2 ** (attempt - 1)) + random.uniform(0, 0.5)
+            logger.warning(
+                "openai_retry",
+                extra={"attempt": attempt, "max_attempts": max_attempts, "delay_s": round(delay, 2), "error": str(e)},
+            )
+            time.sleep(delay)
+
+
+async def _async_openai_call_with_retry(coro_fn):
+    """Call coro_fn() with exponential backoff on transient OpenAI errors (async)."""
+    max_attempts = max(1, OPENAI_MAX_RETRIES)
+    for attempt in range(1, max_attempts + 1):
+        try:
+            return await coro_fn()
+        except OPENAI_RETRYABLE as e:
+            if attempt == max_attempts:
+                raise
+            delay = OPENAI_RETRY_BASE_DELAY * (2 ** (attempt - 1)) + random.uniform(0, 0.5)
+            logger.warning(
+                "openai_retry",
+                extra={"attempt": attempt, "max_attempts": max_attempts, "delay_s": round(delay, 2), "error": str(e)},
+            )
+            await asyncio.sleep(delay)
 
 
 class RetrieveRequest(BaseModel):
@@ -251,13 +313,15 @@ def query(req: QueryRequest, request: Request):
 
     try:
         t1 = time.perf_counter()
-        completion = openai_client.chat.completions.create(
-            model=COMPLETION_MODEL,
-            temperature=0.1,
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT.format(context=context)},
-                {"role": "user", "content": req.query},
-            ],
+        completion = _openai_call_with_retry(
+            lambda: openai_client.chat.completions.create(
+                model=COMPLETION_MODEL,
+                temperature=0.1,
+                messages=[
+                    {"role": "system", "content": SYSTEM_PROMPT.format(context=context)},
+                    {"role": "user", "content": req.query},
+                ],
+            )
         )
         llm_ms = round((time.perf_counter() - t1) * 1000)
         logger.info(
@@ -330,14 +394,16 @@ async def stream_query_response(req: QueryRequest) -> AsyncGenerator[str, None]:
 
     try:
         t1 = time.perf_counter()
-        stream = await async_openai_client.chat.completions.create(
-            model=COMPLETION_MODEL,
-            temperature=0.1,
-            stream=True,
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT.format(context="\n\n---\n\n".join(context_parts))},
-                {"role": "user", "content": req.query},
-            ],
+        stream = await _async_openai_call_with_retry(
+            lambda: async_openai_client.chat.completions.create(
+                model=COMPLETION_MODEL,
+                temperature=0.1,
+                stream=True,
+                messages=[
+                    {"role": "system", "content": SYSTEM_PROMPT.format(context="\n\n---\n\n".join(context_parts))},
+                    {"role": "user", "content": req.query},
+                ],
+            )
         )
         async for chunk in stream:
             delta = chunk.choices[0].delta
