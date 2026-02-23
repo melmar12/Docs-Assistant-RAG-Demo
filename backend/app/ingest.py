@@ -158,7 +158,7 @@ def ingest():
     Loads markdown files from ``docs/``, chunks them by heading boundaries,
     embeds via OpenAI, and upserts into a ChromaDB collection.
     """
-    from app.logging_config import setup_logging
+    from .logging_config import setup_logging
     setup_logging()
 
     if not DOCS_DIR.exists():
