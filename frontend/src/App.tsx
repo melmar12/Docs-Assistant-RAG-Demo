@@ -76,11 +76,11 @@ function App() {
     sessionStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   }, [submittedQuery, answer, sources, chunks]);
 
-  async function handleAsk() {
-    if (!query.trim()) return;
+  async function handleAsk(queryOverride?: string) {
+    const currentQuery = queryOverride ?? query.trim();
+    if (!currentQuery) return;
 
-    const currentQuery = query.trim();
-    setQuery("");
+    if (!queryOverride) setQuery("");
     setLoading(true);
     setStreaming(false);
     setError(null);
@@ -244,6 +244,7 @@ function App() {
               darkMode={darkMode}
               streaming={streaming}
               onNavigateToDoc={(filename) => navigateToDocs(filename)}
+              onRetry={submittedQuery ? () => handleAsk(submittedQuery) : undefined}
             />
 
             <SourcesPanel

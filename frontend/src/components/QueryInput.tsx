@@ -30,7 +30,7 @@ export default function QueryInput({ query, onQueryChange, onSubmit, onReset, lo
       />
       <div className="flex gap-2">
         <button
-          onClick={onSubmit}
+          onClick={() => onSubmit()}
           disabled={loading || !query.trim()}
           className="inline-flex items-center gap-2 bg-purple-600 hover:bg-purple-700 dark:bg-vsc-accent-muted dark:hover:bg-vsc-accent dark:text-vsc-bg text-white px-5 py-2 rounded-lg text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
