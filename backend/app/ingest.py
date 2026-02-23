@@ -158,7 +158,8 @@ def ingest():
     Loads markdown files from ``docs/``, chunks them by heading boundaries,
     embeds via OpenAI, and upserts into a ChromaDB collection.
     """
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+    from app.logging_config import setup_logging
+    setup_logging()
 
     if not DOCS_DIR.exists():
         logger.error("Docs directory not found: %s", DOCS_DIR)
@@ -178,7 +179,7 @@ def ingest():
 
     for doc in documents:
         chunks = chunk_markdown(doc["content"])
-        logger.info("  %s: %d chunk(s)", doc["relative_path"], len(chunks))
+        logger.info("doc_chunked", extra={"relative_path": doc["relative_path"], "num_chunks": len(chunks)})
         for i, chunk in enumerate(chunks):
             all_ids.append(f"{doc['relative_path']}::chunk{i}")
             all_chunks.append(chunk["text"])
@@ -189,7 +190,7 @@ def ingest():
                 "section": chunk["section"],
             })
 
-    logger.info("Total chunks: %d", len(all_chunks))
+    logger.info("ingest_chunks_total", extra={"total_chunks": len(all_chunks)})
 
     # Initialize ChromaDB with OpenAI embeddings
     api_key = os.environ.get("OPENAI_API_KEY")
@@ -224,7 +225,7 @@ def ingest():
             metadatas=all_metadatas[i:end],
         )
 
-    logger.info("Ingested %d chunks into ChromaDB at %s", collection.count(), CHROMA_DIR)
+    logger.info("ingest_complete", extra={"total_chunks": collection.count(), "chroma_dir": str(CHROMA_DIR)})
 
 
 if __name__ == "__main__":

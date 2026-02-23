@@ -7,7 +7,10 @@ for embeddings and completions.
 """
 
 import json
+import logging
 import os
+import time
+import uuid
 from pathlib import Path
 from typing import AsyncGenerator
 
@@ -15,6 +18,11 @@ from dotenv import load_dotenv
 
 ENV_FILE = Path(__file__).resolve().parent.parent / ".env"
 load_dotenv(ENV_FILE)
+
+from app.logging_config import request_id_var, setup_logging
+
+setup_logging()
+logger = logging.getLogger(__name__)
 
 import chromadb
 from chromadb.utils.embedding_functions import OpenAIEmbeddingFunction
@@ -52,6 +60,39 @@ app.add_middleware(
     allow_methods=["GET", "POST"],
     allow_headers=["Content-Type"],
 )
+
+
+@app.middleware("http")
+async def logging_middleware(request: Request, call_next):
+    """Assign a request ID and log request start/end with total latency."""
+    req_id = str(uuid.uuid4())
+    token = request_id_var.set(req_id)
+    t0 = time.perf_counter()
+    logger.info(
+        "request_start",
+        extra={
+            "endpoint": request.url.path,
+            "method": request.method,
+            "client_ip": request.client.host if request.client else None,
+        },
+    )
+    try:
+        response = await call_next(request)
+    except Exception:
+        logger.exception("request_unhandled_exception")
+        raise
+    finally:
+        latency_ms = round((time.perf_counter() - t0) * 1000)
+        logger.info(
+            "request_end",
+            extra={
+                "endpoint": request.url.path,
+                "latency_ms": latency_ms,
+            },
+        )
+        request_id_var.reset(token)
+    return response
+
 
 # Initialize Chroma client + collection once at startup
 api_key = os.environ.get("OPENAI_API_KEY")
@@ -98,13 +139,18 @@ def health():
 @limiter.limit("30/minute")
 def retrieve(req: RetrieveRequest, request: Request):
     """Return the top-k most similar chunks for a query (retrieval only, no LLM)."""
+    logger.info("retrieve_request", extra={"query": req.query, "top_k": req.top_k})
+
     if collection.count() == 0:
+        logger.warning("retrieve_no_docs")
         raise HTTPException(status_code=503, detail="No documents ingested yet. Run: python -m app.ingest")
 
+    t0 = time.perf_counter()
     results = collection.query(
         query_texts=[req.query],
         n_results=min(req.top_k, collection.count()),
     )
+    retrieval_ms = round((time.perf_counter() - t0) * 1000)
 
     chunks = []
     for doc_id, distance, text in zip(
@@ -118,6 +164,14 @@ def retrieve(req: RetrieveRequest, request: Request):
             text=text,
         ))
 
+    logger.info(
+        "retrieval_complete",
+        extra={
+            "num_results": len(chunks),
+            "top_score": chunks[0].score if chunks else None,
+            "latency_ms": retrieval_ms,
+        },
+    )
     return RetrieveResponse(results=chunks)
 
 
@@ -146,13 +200,18 @@ class QueryResponse(BaseModel):
 @limiter.limit("10/minute")
 def query(req: QueryRequest, request: Request):
     """Retrieve relevant chunks and generate an LLM answer grounded in them."""
+    logger.info("query_request", extra={"query": req.query, "top_k": req.top_k})
+
     if collection.count() == 0:
+        logger.warning("query_no_docs")
         raise HTTPException(status_code=503, detail="No documents ingested yet. Run: python -m app.ingest")
 
+    t0 = time.perf_counter()
     results = collection.query(
         query_texts=[req.query],
         n_results=min(req.top_k, collection.count()),
     )
+    retrieval_ms = round((time.perf_counter() - t0) * 1000)
 
     # Build context and chunk results from retrieved chunks
     context_parts = []
@@ -173,9 +232,19 @@ def query(req: QueryRequest, request: Request):
             text=text,
         ))
 
+    logger.info(
+        "retrieval_complete",
+        extra={
+            "num_results": len(chunks),
+            "top_score": chunks[0].score if chunks else None,
+            "latency_ms": retrieval_ms,
+        },
+    )
+
     context = "\n\n---\n\n".join(context_parts)
 
     try:
+        t1 = time.perf_counter()
         completion = openai_client.chat.completions.create(
             model=COMPLETION_MODEL,
             temperature=0.1,
@@ -184,7 +253,17 @@ def query(req: QueryRequest, request: Request):
                 {"role": "user", "content": req.query},
             ],
         )
+        llm_ms = round((time.perf_counter() - t1) * 1000)
+        logger.info(
+            "llm_complete",
+            extra={"model": COMPLETION_MODEL, "latency_ms": llm_ms, "num_sources": len(sources)},
+        )
     except Exception as e:
+        logger.error(
+            "llm_error",
+            extra={"status_code": 503, "detail": str(e)},
+            exc_info=True,
+        )
         raise HTTPException(status_code=503, detail=f"LLM request failed: {e}")
 
     return QueryResponse(
@@ -204,14 +283,17 @@ async def stream_query_response(req: QueryRequest) -> AsyncGenerator[str, None]:
       error    — emitted instead of done if something goes wrong
     """
     if collection.count() == 0:
+        logger.warning("stream_no_docs")
         yield f"event: error\ndata: {json.dumps({'detail': 'No documents ingested yet. Run: python -m app.ingest'})}\n\n"
         return
 
     try:
+        t0 = time.perf_counter()
         results = collection.query(
             query_texts=[req.query],
             n_results=min(req.top_k, collection.count()),
         )
+        retrieval_ms = round((time.perf_counter() - t0) * 1000)
 
         context_parts, sources, chunks = [], [], []
         for doc_id, distance, text in zip(
@@ -225,12 +307,23 @@ async def stream_query_response(req: QueryRequest) -> AsyncGenerator[str, None]:
                 sources.append(source)
             chunks.append(ChunkResult(doc_id=doc_id, score=round(1 - distance, 4), text=text))
 
+        logger.info(
+            "stream_retrieval_complete",
+            extra={
+                "query": req.query,
+                "num_results": len(chunks),
+                "top_score": chunks[0].score if chunks else None,
+                "latency_ms": retrieval_ms,
+            },
+        )
         yield f"event: metadata\ndata: {json.dumps({'sources': sources, 'chunks': [c.model_dump() for c in chunks]})}\n\n"
     except Exception as e:
+        logger.error("stream_retrieval_error", extra={"detail": str(e)}, exc_info=True)
         yield f"event: error\ndata: {json.dumps({'detail': f'Vector search failed: {e}'})}\n\n"
         return
 
     try:
+        t1 = time.perf_counter()
         stream = await async_openai_client.chat.completions.create(
             model=COMPLETION_MODEL,
             temperature=0.1,
@@ -244,7 +337,13 @@ async def stream_query_response(req: QueryRequest) -> AsyncGenerator[str, None]:
             delta = chunk.choices[0].delta
             if delta.content:
                 yield f"event: token\ndata: {json.dumps({'text': delta.content})}\n\n"
+        llm_ms = round((time.perf_counter() - t1) * 1000)
+        logger.info(
+            "stream_llm_done",
+            extra={"model": COMPLETION_MODEL, "latency_ms": llm_ms, "num_sources": len(sources)},
+        )
     except Exception as e:
+        logger.error("stream_llm_error", extra={"detail": str(e)}, exc_info=True)
         yield f"event: error\ndata: {json.dumps({'detail': f'LLM request failed: {e}'})}\n\n"
         return
 
@@ -278,7 +377,10 @@ class DebugQueryResponse(BaseModel):
 @app.post("/debug-query", response_model=DebugQueryResponse)
 def debug_query(req: RetrieveRequest):
     """Return retrieval diagnostics: doc_id, section, chunk_id, score, first 200 chars."""
+    logger.info("debug_query_request", extra={"query": req.query, "top_k": req.top_k})
+
     if collection.count() == 0:
+        logger.warning("debug_query_no_docs")
         raise HTTPException(status_code=503, detail="No documents ingested yet. Run: python -m app.ingest")
 
     results = collection.query(
@@ -316,13 +418,16 @@ def list_docs():
 def get_doc(filename: str):
     """Return the raw markdown content of a documentation file."""
     if not filename.endswith(".md") or "/" in filename or "\\" in filename or ".." in filename:
+        logger.warning("doc_not_found", extra={"doc_filename": filename, "status_code": 404})
         raise HTTPException(status_code=404, detail="Not found")
     path = (DOCS_DIR / filename).resolve()
     if not path.is_relative_to(DOCS_DIR.resolve()) or not path.is_file():
+        logger.warning("doc_not_found", extra={"doc_filename": filename, "status_code": 404})
         raise HTTPException(status_code=404, detail="Not found")
 
     try:
         md_text = path.read_text(encoding="utf-8")
     except UnicodeDecodeError:
+        logger.error("doc_encoding_error", extra={"doc_filename": filename, "status_code": 500})
         raise HTTPException(status_code=500, detail=f"File encoding error: {filename}")
     return {"filename": filename, "content": md_text}
