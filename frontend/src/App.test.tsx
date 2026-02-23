@@ -232,6 +232,20 @@ describe("App", () => {
   });
 
   describe("Copy button", () => {
+    let originalClipboard: Clipboard;
+
+    beforeEach(() => {
+      originalClipboard = navigator.clipboard;
+    });
+
+    afterEach(() => {
+      Object.defineProperty(navigator, "clipboard", {
+        value: originalClipboard,
+        writable: true,
+        configurable: true,
+      });
+    });
+
     async function submitQuery() {
       render(<App />);
       const textarea = screen.getByPlaceholderText("Ask a question about internal docs...");
@@ -308,7 +322,7 @@ describe("App", () => {
       render(<App />);
       const textarea = screen.getByPlaceholderText("Ask a question about internal docs...");
       await userEvent.type(textarea, "test");
-      userEvent.click(screen.getByText("Ask"));
+      await userEvent.click(screen.getByText("Ask"));
 
       await waitFor(() => {
         expect(screen.getByRole("button", { name: /copy answer to clipboard/i })).toBeInTheDocument();
@@ -318,6 +332,46 @@ describe("App", () => {
       sendDone();
       await waitFor(() => {
         expect(screen.getByRole("button", { name: /copy answer to clipboard/i })).not.toBeDisabled();
+      });
+    });
+
+    it("handles missing navigator.clipboard gracefully", async () => {
+      Object.defineProperty(navigator, "clipboard", {
+        value: undefined,
+        writable: true,
+        configurable: true,
+      });
+
+      await submitQuery();
+      const copyButton = screen.getByRole("button", { name: /copy answer to clipboard/i });
+
+      await waitFor(() => {
+        expect(copyButton).not.toBeDisabled();
+      });
+
+      // Clicking should exercise the graceful no-op path without throwing
+      await userEvent.click(copyButton);
+    });
+
+    it("handles clipboard.writeText rejection gracefully", async () => {
+      const writeTextMock = vi.fn().mockRejectedValue(new Error("copy failed"));
+      Object.defineProperty(navigator, "clipboard", {
+        value: { writeText: writeTextMock },
+        writable: true,
+        configurable: true,
+      });
+
+      await submitQuery();
+      const copyButton = screen.getByRole("button", { name: /copy answer to clipboard/i });
+
+      await waitFor(() => {
+        expect(copyButton).not.toBeDisabled();
+      });
+
+      await userEvent.click(copyButton);
+
+      await waitFor(() => {
+        expect(writeTextMock).toHaveBeenCalledTimes(1);
       });
     });
   });
