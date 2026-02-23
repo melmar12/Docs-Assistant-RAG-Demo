@@ -9,9 +9,9 @@ Recommendations for improving the Docs Assistant RAG Demo over time, organized b
 Low effort, high impact. Good starting points.
 
 - [x] **Streaming LLM responses** — Stream the answer token-by-token via SSE instead of waiting for the full response. Biggest UX improvement for perceived speed; directly extends the loading spinner work.
-- [ ] **Copy-to-clipboard button** on `AnswerCard` — Let users easily copy answers.
-- [ ] **"Try Again" button** on failed queries — Currently there's no retry path after an error.
-- [ ] **ARIA labels on collapsible panels** — Sources and Chunks panels use `+`/`−` symbols with no accessible label; screen readers can't describe them.
+- [x] **Copy-to-clipboard button** on `AnswerCard` — Let users easily copy answers.
+- [x] **"Try Again" button** on failed queries — Currently there's no retry path after an error.
+- [x] **ARIA labels on collapsible panels** — Sources and Chunks panels use `+`/`−` symbols with no accessible label; screen readers can't describe them.
 - [x] **`env.example` file** — Provide a template showing required environment variables so setup is self-documenting.
 - [x] **GitHub Actions CI** — Run `vitest` automatically on every PR. The test suite exists but there's no automation enforcing it.
 
@@ -22,7 +22,7 @@ Low effort, high impact. Good starting points.
 Worth doing once quick wins are in place.
 
 ### Reliability & Observability
-- [ ] **Structured logging in the backend** — Add JSON-structured logs for queries, retrieval results, latency, and errors. Currently there's no visibility into what's happening in production.
+- [x] **Structured logging in the backend** — Add JSON-structured logs for queries, retrieval results, latency, and errors. Currently there's no visibility into what's happening in production.
 - [ ] **Retry with exponential backoff for OpenAI calls** — Transient quota/rate errors currently surface as uncaught 500s.
 - [ ] **Incremental document ingestion** — The current pipeline deletes and recreates the entire ChromaDB collection on every run, causing downtime. Switch to upsert-only.
 
