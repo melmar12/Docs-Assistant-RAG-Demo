@@ -18,6 +18,11 @@ _LOGRECORD_ATTRS = frozenset({
     "message",
 })
 
+# Top-level JSON keys reserved for the standard payload — caller-supplied
+# ``extra`` keys that clash with these are silently skipped to prevent
+# log corruption.
+_RESERVED_KEYS = frozenset({"timestamp", "level", "logger", "message", "request_id", "exc_info"})
+
 
 class JsonFormatter(logging.Formatter):
     """Emit each log record as a single-line JSON object.
@@ -44,7 +49,7 @@ class JsonFormatter(logging.Formatter):
         }
 
         for key, value in record.__dict__.items():
-            if key not in _LOGRECORD_ATTRS and not key.startswith("_"):
+            if key not in _LOGRECORD_ATTRS and not key.startswith("_") and key not in _RESERVED_KEYS:
                 payload[key] = value
 
         if record.exc_info:
