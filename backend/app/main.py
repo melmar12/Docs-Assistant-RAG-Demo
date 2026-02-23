@@ -56,7 +56,21 @@ COMPLETION_MODEL = os.environ.get("COMPLETION_MODEL", "gpt-4o-mini")
 # Retry configuration for transient OpenAI errors (rate limits, timeouts, etc.)
 OPENAI_RETRYABLE = (RateLimitError, APITimeoutError, APIConnectionError, InternalServerError)
 OPENAI_MAX_RETRIES = int(os.environ.get("OPENAI_MAX_RETRIES", "3"))
-OPENAI_RETRY_BASE_DELAY = float(os.environ.get("OPENAI_RETRY_BASE_DELAY", "1.0"))
+_retry_base_delay_raw = os.environ.get("OPENAI_RETRY_BASE_DELAY", "1.0")
+try:
+    OPENAI_RETRY_BASE_DELAY = float(_retry_base_delay_raw)
+    if OPENAI_RETRY_BASE_DELAY <= 0:
+        logger.warning(
+            "OPENAI_RETRY_BASE_DELAY must be positive; got %r. Falling back to default 1.0.",
+            _retry_base_delay_raw,
+        )
+        OPENAI_RETRY_BASE_DELAY = 1.0
+except (TypeError, ValueError):
+    logger.warning(
+        "Invalid OPENAI_RETRY_BASE_DELAY value %r. Falling back to default 1.0.",
+        _retry_base_delay_raw,
+    )
+    OPENAI_RETRY_BASE_DELAY = 1.0
 
 app = FastAPI()
 
