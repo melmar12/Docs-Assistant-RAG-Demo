@@ -5,7 +5,7 @@
  * that navigate to the doc browser.
  */
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { getMarkdownComponents } from "../markdownConfig";
@@ -21,13 +21,33 @@ interface AnswerCardProps {
 export default function AnswerCard({ submittedQuery, answer, error, darkMode, streaming, onNavigateToDoc }: AnswerCardProps) {
   const markdownComponents = getMarkdownComponents(darkMode);
   const [copied, setCopied] = useState(false);
+  const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  function handleCopy() {
+  useEffect(() => {
+    return () => {
+      if (copyTimerRef.current !== null) clearTimeout(copyTimerRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (copyTimerRef.current !== null) clearTimeout(copyTimerRef.current);
+    setCopied(false);
+  }, [answer, streaming]);
+
+  async function handleCopy() {
     if (!answer) return;
-    navigator.clipboard.writeText(answer).then(() => {
+    if (!navigator.clipboard?.writeText) {
+      console.error("Clipboard API is not available in this environment.");
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(answer);
+      if (copyTimerRef.current !== null) clearTimeout(copyTimerRef.current);
       setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    });
+      copyTimerRef.current = setTimeout(() => setCopied(false), 2000);
+    } catch (error) {
+      console.error("Failed to copy text to clipboard:", error);
+    }
   }
 
   return (
@@ -54,6 +74,7 @@ export default function AnswerCard({ submittedQuery, answer, error, darkMode, st
               Answer
             </h2>
             <button
+              type="button"
               onClick={handleCopy}
               disabled={streaming}
               className="text-xs text-gray-400 hover:text-gray-600 dark:text-vsc-text-muted dark:hover:text-vsc-text disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
