@@ -166,13 +166,14 @@ function App() {
 
   async function handleFeedback(rating: "up" | "down") {
     if (!submittedQuery || !answer) return;
-    setFeedback(rating);
     try {
-      await fetch(`${API_URL}/feedback`, {
+      const res = await fetch(`${API_URL}/feedback`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ query: submittedQuery, answer, rating }),
       });
+      if (!res.ok) throw new Error(`Server responded with ${res.status}`);
+      setFeedback(rating);
     } catch (e) {
       console.error("Failed to submit feedback:", e);
     }
