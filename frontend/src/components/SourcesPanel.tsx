@@ -25,20 +25,22 @@ export default function SourcesPanel({ sources, open, onToggle, onSelectSource }
         <span aria-hidden="true">{open ? "\u2212" : "+"}</span>
       </button>
 
-      {open && (
-        <ul id="sources-panel" className="border-t border-gray-100 dark:border-vsc-border divide-y divide-gray-100 dark:divide-vsc-border">
-          {sources.map((src, i) => (
-            <li key={i} className="px-4 py-3 text-sm">
-              <button
-                onClick={() => onSelectSource(src)}
-                className="text-purple-600 hover:text-purple-700 dark:text-vsc-link dark:hover:text-vsc-link-hover hover:underline"
-              >
-                {src}
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
+      <div id="sources-panel">
+        {open && (
+          <ul className="border-t border-gray-100 dark:border-vsc-border divide-y divide-gray-100 dark:divide-vsc-border">
+            {sources.map((src, i) => (
+              <li key={i} className="px-4 py-3 text-sm">
+                <button
+                  onClick={() => onSelectSource(src)}
+                  className="text-purple-600 hover:text-purple-700 dark:text-vsc-link dark:hover:text-vsc-link-hover hover:underline"
+                >
+                  {src}
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
     </div>
   );
 }
