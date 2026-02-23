@@ -12,7 +12,7 @@ Low effort, high impact. Good starting points.
 - [ ] **Copy-to-clipboard button** on `AnswerCard` — Let users easily copy answers.
 - [ ] **"Try Again" button** on failed queries — Currently there's no retry path after an error.
 - [ ] **ARIA labels on collapsible panels** — Sources and Chunks panels use `+`/`−` symbols with no accessible label; screen readers can't describe them.
-- [ ] **`env.example` file** — Provide a template showing required environment variables so setup is self-documenting.
+- [x] **`env.example` file** — Provide a template showing required environment variables so setup is self-documenting.
 - [x] **GitHub Actions CI** — Run `vitest` automatically on every PR. The test suite exists but there's no automation enforcing it.
 
 ---
@@ -27,7 +27,7 @@ Worth doing once quick wins are in place.
 - [ ] **Incremental document ingestion** — The current pipeline deletes and recreates the entire ChromaDB collection on every run, causing downtime. Switch to upsert-only.
 
 ### Test Coverage
-- [ ] **Frontend component tests** — `QueryInput`, `AnswerCard`, `SourcesPanel`, `ChunksPanel`, and `DocBrowser` have no unit tests. The MSW + Vitest setup is already in place.
+- [x] **Frontend component tests** — `QueryInput`, `AnswerCard`, `SourcesPanel`, `ChunksPanel`, and `DocBrowser` have no unit tests. The MSW + Vitest setup is already in place.
 - [x] **Backend unit tests for ingestion** — The chunk-splitting logic in `backend/app/ingest.py` is the most complex code in the repo and has zero test coverage.
 - [x] **Backend integration tests** — Test the `/query` and `/retrieve` endpoints with a real (test) ChromaDB instance.
 
