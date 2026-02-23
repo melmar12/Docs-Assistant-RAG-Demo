@@ -7,6 +7,7 @@ for embeddings and completions.
 """
 
 import asyncio
+import contextlib
 import json
 import logging
 import os
@@ -50,7 +51,8 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
 CHROMA_DIR = Path(__file__).resolve().parent.parent / "chroma_db"
-FEEDBACK_DB = Path(__file__).resolve().parent.parent / "feedback.db"
+_default_feedback_db = Path(__file__).resolve().parent.parent / "feedback.db"
+FEEDBACK_DB = Path(os.environ.get("FEEDBACK_DB", str(_default_feedback_db)))
 DOCS_DIR = Path(__file__).resolve().parent.parent / "docs"
 COLLECTION_NAME = "internal_docs"
 EMBEDDING_MODEL = os.environ.get("EMBEDDING_MODEL", "text-embedding-3-small")
@@ -72,9 +74,6 @@ def _init_feedback_db() -> None:
             """
         )
 
-
-_init_feedback_db()
-
 # Retry configuration for transient OpenAI errors (rate limits, timeouts, etc.)
 OPENAI_RETRYABLE = (RateLimitError, APITimeoutError, APIConnectionError, InternalServerError)
 OPENAI_MAX_RETRIES = int(os.environ.get("OPENAI_MAX_RETRIES", "3"))
@@ -94,7 +93,13 @@ except (TypeError, ValueError):
     )
     OPENAI_RETRY_BASE_DELAY = 1.0
 
-app = FastAPI()
+@contextlib.asynccontextmanager
+async def lifespan(app: FastAPI):
+    _init_feedback_db()
+    yield
+
+
+app = FastAPI(lifespan=lifespan)
 
 limiter = Limiter(key_func=get_remote_address)
 app.state.limiter = limiter
@@ -463,7 +468,8 @@ class FeedbackRequest(BaseModel):
 
 
 @app.post("/feedback")
-def submit_feedback(req: FeedbackRequest):
+@limiter.limit("10/minute")
+def submit_feedback(req: FeedbackRequest, request: Request):
     """Record a thumbs-up or thumbs-down rating for an answer."""
     created_at = datetime.now(timezone.utc).isoformat()
     with sqlite3.connect(FEEDBACK_DB) as conn:

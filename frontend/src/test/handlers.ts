@@ -47,6 +47,10 @@ export const handlers = [
     });
   }),
 
+  http.post(`${API_URL}/feedback`, () => {
+    return HttpResponse.json({ status: "ok" });
+  }),
+
   http.get(`${API_URL}/api/docs`, () => {
     return HttpResponse.json(docList);
   }),

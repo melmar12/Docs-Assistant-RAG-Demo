@@ -293,3 +293,54 @@ def test_query_stream_exhausts_retries(mock_col, mock_openai, mock_sleep, client
     assert "LLM request failed" in res.text
     assert mock_openai.chat.completions.create.call_count == 2
 
+
+# --- /feedback ---
+
+
+def test_submit_feedback_thumbs_up(tmp_path, client):
+    from backend.app.main import _init_feedback_db
+
+    db_path = tmp_path / "test_feedback.db"
+    with patch("backend.app.main.FEEDBACK_DB", db_path):
+        _init_feedback_db()
+        res = client.post(
+            "/feedback",
+            json={"query": "How do I onboard?", "answer": "Follow the guide.", "rating": "up"},
+        )
+    assert res.status_code == 200
+    assert res.json() == {"status": "ok"}
+
+    import sqlite3
+    with sqlite3.connect(db_path) as conn:
+        rows = conn.execute("SELECT query, rating FROM feedback").fetchall()
+    assert len(rows) == 1
+    assert rows[0] == ("How do I onboard?", "up")
+
+
+def test_submit_feedback_thumbs_down(tmp_path, client):
+    from backend.app.main import _init_feedback_db
+
+    db_path = tmp_path / "test_feedback.db"
+    with patch("backend.app.main.FEEDBACK_DB", db_path):
+        _init_feedback_db()
+        res = client.post(
+            "/feedback",
+            json={"query": "What is the policy?", "answer": "See policy doc.", "rating": "down"},
+        )
+    assert res.status_code == 200
+    assert res.json() == {"status": "ok"}
+
+    import sqlite3
+    with sqlite3.connect(db_path) as conn:
+        rows = conn.execute("SELECT query, rating FROM feedback").fetchall()
+    assert len(rows) == 1
+    assert rows[0] == ("What is the policy?", "down")
+
+
+def test_submit_feedback_invalid_rating(client):
+    res = client.post(
+        "/feedback",
+        json={"query": "test", "answer": "answer", "rating": "maybe"},
+    )
+    assert res.status_code == 422
+

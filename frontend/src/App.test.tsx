@@ -376,6 +376,87 @@ describe("App", () => {
     });
   });
 
+  describe("Feedback buttons", () => {
+    async function submitAndWaitForAnswer() {
+      render(<App />);
+      const textarea = screen.getByPlaceholderText("Ask a question about internal docs...");
+      await userEvent.type(textarea, "test question");
+      await userEvent.click(screen.getByText("Ask"));
+      await waitFor(() => {
+        expect(screen.getByText("Answer")).toBeInTheDocument();
+      });
+      await waitFor(() => {
+        expect(screen.getByLabelText("Thumbs up")).toBeInTheDocument();
+      });
+    }
+
+    it("shows thumbs buttons after answer is received", async () => {
+      await submitAndWaitForAnswer();
+      expect(screen.getByLabelText("Thumbs up")).toBeInTheDocument();
+      expect(screen.getByLabelText("Thumbs down")).toBeInTheDocument();
+      expect(screen.getByText("Was this helpful?")).toBeInTheDocument();
+    });
+
+    it("shows thank-you text and disables buttons after clicking thumbs up", async () => {
+      await submitAndWaitForAnswer();
+
+      await userEvent.click(screen.getByLabelText("Thumbs up"));
+
+      await waitFor(() => {
+        expect(screen.getByText("Thanks for the feedback!")).toBeInTheDocument();
+      });
+      expect(screen.getByLabelText("Thumbs up")).toBeDisabled();
+      expect(screen.getByLabelText("Thumbs down")).toBeDisabled();
+    });
+
+    it("shows thank-you text and disables buttons after clicking thumbs down", async () => {
+      await submitAndWaitForAnswer();
+
+      await userEvent.click(screen.getByLabelText("Thumbs down"));
+
+      await waitFor(() => {
+        expect(screen.getByText("Thanks for the feedback!")).toBeInTheDocument();
+      });
+      expect(screen.getByLabelText("Thumbs up")).toBeDisabled();
+      expect(screen.getByLabelText("Thumbs down")).toBeDisabled();
+    });
+
+    it("POSTs to /feedback with correct payload on thumbs up", async () => {
+      let capturedBody: unknown;
+      server.use(
+        http.post("http://localhost:8000/feedback", async ({ request }) => {
+          capturedBody = await request.json();
+          return HttpResponse.json({ status: "ok" });
+        })
+      );
+
+      await submitAndWaitForAnswer();
+      await userEvent.click(screen.getByLabelText("Thumbs up"));
+
+      await waitFor(() => {
+        expect(capturedBody).toMatchObject({ rating: "up", query: "test question" });
+      });
+    });
+
+    it("does not show thank-you text if /feedback returns an error", async () => {
+      server.use(
+        http.post("http://localhost:8000/feedback", () => {
+          return new HttpResponse(null, { status: 500 });
+        })
+      );
+
+      await submitAndWaitForAnswer();
+      await userEvent.click(screen.getByLabelText("Thumbs up"));
+
+      // Wait a tick for the async handler to resolve
+      await waitFor(() => {
+        expect(screen.queryByText("Thanks for the feedback!")).not.toBeInTheDocument();
+      });
+      // Buttons should remain enabled
+      expect(screen.getByLabelText("Thumbs up")).not.toBeDisabled();
+    });
+  });
+
   describe("Doc browsing", () => {
     it("renders doc list in sidebar", async () => {
       render(<App />);
