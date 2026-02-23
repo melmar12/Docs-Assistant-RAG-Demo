@@ -5,6 +5,7 @@
  * that navigate to the doc browser.
  */
 
+import { useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { getMarkdownComponents } from "../markdownConfig";
@@ -19,6 +20,15 @@ interface AnswerCardProps {
 }
 export default function AnswerCard({ submittedQuery, answer, error, darkMode, streaming, onNavigateToDoc }: AnswerCardProps) {
   const markdownComponents = getMarkdownComponents(darkMode);
+  const [copied, setCopied] = useState(false);
+
+  function handleCopy() {
+    if (!answer) return;
+    navigator.clipboard.writeText(answer).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }
 
   return (
     <>
@@ -39,9 +49,19 @@ export default function AnswerCard({ submittedQuery, answer, error, darkMode, st
 
       {answer && (
         <div className="bg-white dark:bg-vsc-surface border border-gray-200 dark:border-vsc-border rounded-lg p-5">
-          <h2 className="text-sm font-semibold text-gray-500 dark:text-vsc-text-muted uppercase tracking-wide mb-2">
-            Answer
-          </h2>
+          <div className="flex items-center justify-between mb-2">
+            <h2 className="text-sm font-semibold text-gray-500 dark:text-vsc-text-muted uppercase tracking-wide">
+              Answer
+            </h2>
+            <button
+              onClick={handleCopy}
+              disabled={streaming}
+              className="text-xs text-gray-400 hover:text-gray-600 dark:text-vsc-text-muted dark:hover:text-vsc-text disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              aria-label="Copy answer to clipboard"
+            >
+              {copied ? "Copied!" : "Copy"}
+            </button>
+          </div>
           <div className="text-sm leading-relaxed prose prose-sm max-w-none prose-p:my-2 prose-p:text-gray-700 dark:prose-p:text-vsc-text prose-ul:my-2 prose-ol:my-2 prose-li:my-0.5 prose-li:text-gray-700 dark:prose-li:text-vsc-text prose-code:bg-gray-100 dark:prose-code:bg-vsc-code-bg prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:text-gray-800 dark:prose-code:text-vsc-text prose-code:before:content-none prose-code:after:content-none prose-pre:bg-gray-100 dark:prose-pre:bg-vsc-code-bg prose-pre:rounded-lg prose-headings:text-purple-900 dark:prose-headings:text-vsc-heading prose-a:text-purple-600 dark:prose-a:text-vsc-link prose-strong:text-gray-900 dark:prose-strong:text-vsc-text prose-th:text-gray-900 dark:prose-th:text-vsc-text prose-td:text-gray-700 dark:prose-td:text-vsc-text prose-table:border-collapse prose-th:border prose-th:border-gray-300 dark:prose-th:border-gray-600 prose-td:border prose-td:border-gray-300 dark:prose-td:border-gray-600 prose-th:px-3 prose-th:py-2 prose-td:px-3 prose-td:py-2">
             <ReactMarkdown
               remarkPlugins={[remarkGfm]}
