@@ -16,8 +16,9 @@ interface AnswerCardProps {
   darkMode: boolean;
   streaming: boolean;
   onNavigateToDoc: (filename: string) => void;
+  onRetry?: () => void;
 }
-export default function AnswerCard({ submittedQuery, answer, error, darkMode, streaming, onNavigateToDoc }: AnswerCardProps) {
+export default function AnswerCard({ submittedQuery, answer, error, darkMode, streaming, onNavigateToDoc, onRetry }: AnswerCardProps) {
   const markdownComponents = getMarkdownComponents(darkMode);
 
   return (
@@ -32,8 +33,16 @@ export default function AnswerCard({ submittedQuery, answer, error, darkMode, st
       )}
 
       {error && (
-        <div className="bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/50 text-red-700 dark:text-red-400 rounded-lg p-4 text-sm">
-          {error}
+        <div className="bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/50 text-red-700 dark:text-red-400 rounded-lg p-4 text-sm flex items-center justify-between gap-4">
+          <span>{error}</span>
+          {onRetry && (
+            <button
+              onClick={onRetry}
+              className="shrink-0 text-xs font-medium px-3 py-1.5 rounded border border-red-300 dark:border-red-800 hover:bg-red-100 dark:hover:bg-red-900/40 transition-colors"
+            >
+              Try again
+            </button>
+          )}
         </div>
       )}
 
