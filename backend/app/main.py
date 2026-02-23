@@ -21,7 +21,7 @@ from dotenv import load_dotenv
 ENV_FILE = Path(__file__).resolve().parent.parent / ".env"
 load_dotenv(ENV_FILE)
 
-from app.logging_config import request_id_var, setup_logging
+from .logging_config import request_id_var, setup_logging
 
 # setup_logging() is called here intentionally — before third-party imports —
 # so that the root logger is configured with JsonFormatter before any library
